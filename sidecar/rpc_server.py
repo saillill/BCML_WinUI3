@@ -1719,11 +1719,23 @@ def apply_mod_options(params) -> dict:
     #    我们只重建了 options/ 就又调 remerge，remerge 读到的还是安装时那份
     #    日志，于是选项等于没换。
     #
-    #    注入沿用 BCML 的语义：先清掉「上次注入留下的、且这次不再选」的文件。
-    #    哪些是上次注入的？options/ 目录里的文件与模组根同名同相对路径的那些。
-    #    这样不动模组本体自己的文件（它们和任何选项目录都不同名）。
-    #    同名 SARC（.pack 等）走**合并**而非覆盖 —— 见 _place_option_file 的说明；
-    #    顺序沿用用户的选择顺序，与 install_mod 一致。
+    #    ★ 关键修正（取消勾选必须能"撤掉"）：
+    #    光"注入选中项"是不够的。取消勾选某个选项时，它当初注入到模组根的文件
+    #    不会自己消失 —— 而重算 logs/ 会把模组根里所有文件都当成"本模组内容"
+    #    记进日志，于是取消勾选 = 完全无效。
+    #
+    #    实测案例：林可儿 info.json 里 Umbrella Glider 是 `default: true`，
+    #    导入时就被自动注入 3 条 Item_Parastole2/Player_Animation 到本体
+    #    TitleBG.pack（本体那份和选项目录逐条同哈希，nlink=1 是独立实体）。
+    #    此前 _inject_option_files 只删"仍在 options/ 里的旧变体文件"，
+    #    可取消勾选后该变体目录已在第 2 步被整棵删除，遍历时根本看不到它，
+    #    那 3 条就永久残留 → 伞永远是洋伞。
+    #
+    #    修法：删除依据改为**快照 pristine 的全量变体**，而不是当前 options/。
+    #    快照里每个变体的全部文件 = "模组里所有可能由选项带来的文件"，
+    #    减去"这次选中项提供的"，剩下的就该从模组根删掉。
+    #    这样与 install_mod 的语义一致（它也是"按选择重建"，不是"只增不减"）。
+    _prune_option_injections(mod, pristine, wanted)
     _inject_option_files(mod, options_dir, applied, order=params.get("selects"))
 
     # 4) 记账：BCML 只认 `disable` / `options` 两个字段，**不读 `selects`**。
@@ -1753,6 +1765,128 @@ def apply_mod_options(params) -> dict:
         "applied": applied,
         "available": sorted(snap_folders | on_disk),
     }
+
+
+def _prune_option_injections(mod: Path, pristine: Path, wanted: set) -> list:
+    """把「没被选中的变体」当初注入模组本体的内容撤掉，返回处理过的相对路径。
+
+    为什么要独立这一步：`_inject_option_files` 只能"铺上去"，铺不上去的旧内容
+    它管不了。取消勾选 = 该选项的文件必须在模组里消失，否则重算 logs/ 时它们
+    仍被当作本模组内容，取消勾选形同虚设（见 apply_mod_options 里的实测案例）。
+
+    依据**快照全量变体**（而非当前 options/）来判定，因为只有快照保留了
+    「所有变体原本带哪些文件」这一信息 —— 当前 options/ 里未选中的变体
+    已经被删掉了。
+
+    处理分两类，语义对齐 install_mod：
+      · 非 SARC 同名文件 → 直接删除（它只可能来自选项注入）
+      · SARC 同名文件    → **只移除该变体贡献的条目**，保留其余条目
+
+    最后一类要特别小心：本体 TitleBG.pack 里那 3 条洋伞条目，与
+    `options/Umbrella Glider/.../TitleBG.pack` 逐条同哈希。只要把
+    「该变体 SARC 的条目名」从本体 SARC 里 pop 掉即可 —— 不能整份删，
+    否则会连本体自己的条目一起抹掉。
+    """
+    from bcml import util as _bcml_util  # noqa: PLC0415 - 延迟导入
+    import oead  # noqa: PLC0415 - BCML 自带
+
+    sarc_exts = {e.lower() for e in _bcml_util.SARC_EXTS}
+
+    # 1) 汇总「所有变体提供的文件」与「选中项提供的文件」
+    all_from_options: dict = {}   # rel -> 提供它的变体名集合
+    wanted_files: set = set()
+
+    for variant in sorted(p for p in pristine.glob("*") if p.is_dir()):
+        for f in variant.rglob("*"):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(variant)
+            all_from_options.setdefault(rel, set()).add(variant.name)
+            if variant.name in wanted:
+                wanted_files.add(rel)
+
+    # 2) 该撤掉的文件 = 选项提供过、但这次没选中的
+    to_prune = [rel for rel in all_from_options if rel not in wanted_files]
+
+    touched = []
+    for rel in sorted(to_prune, key=lambda p: str(p)):
+        target = mod / rel
+        if not target.exists():
+            continue
+
+        # 该文件仍被某个选中变体提供？→ 不能删（那是这次还要的内容）
+        if rel in wanted_files:
+            continue
+
+        is_sarc = rel.suffix.lower() in sarc_exts
+        if not is_sarc:
+            try:
+                target.unlink()
+                touched.append(str(rel))
+            except OSError:
+                pass
+            continue
+
+        # SARC：只摘掉被撤销的那些变体贡献的条目
+        removed_variants = all_from_options[rel] - wanted
+        entry_names = set()
+        for variant in removed_variants:
+            src = pristine / variant / rel
+            if not src.is_file():
+                continue
+            try:
+                src_sarc = oead_sarc_read(src)
+            except Exception:  # noqa: BLE001 - 解析不了就跳过该变体
+                continue
+            entry_names |= {f.name for f in src_sarc.get_files()}
+            del src_sarc
+        if not entry_names:
+            continue
+
+        try:
+            target_sarc = oead_sarc_read(target)
+        except Exception:  # noqa: BLE001
+            continue
+
+        kept = {f.name: bytes(f.data) for f in target_sarc.get_files()
+                if f.name not in entry_names}
+        writer = oead.SarcWriter.from_sarc(target_sarc)
+        del target_sarc
+
+        if len(kept) == 0:
+            # 本体这条 SARC 全是被注入的 → 直接删掉整个文件
+            del writer
+            try:
+                target.unlink()
+                touched.append(str(rel))
+            except OSError:
+                pass
+            continue
+
+        # 用"保留集"整体替换 files（from_sarc 已带好 endianness/对齐等元数据）
+        writer.files = oead.SarcWriter.FileMap()
+        for ename, edata in kept.items():
+            writer.files[ename] = edata
+
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        target.write_bytes(writer.write()[1])
+        del writer
+        touched.append(str(rel))
+
+    if touched:
+        _log_append(f"[modOptions] {mod.name}：已从模组本体撤销 "
+                    f"{len(touched)} 个不再选中的选项文件")
+    return touched
+
+
+def oead_sarc_read(path: Path):
+    """读 SARC（自动处理 Yaz0 压缩），统一入口便于两处复用。"""
+    import oead as _oead  # noqa: PLC0415 - BCML 自带
+    from bcml import util as _bcml_util  # noqa: PLC0415
+    return _oead.Sarc(_bcml_util.unyaz_if_needed(path.read_bytes()))
 
 
 def _inject_option_files(mod: Path, options_dir: Path, applied, order=None) -> None:
