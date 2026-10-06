@@ -226,6 +226,7 @@ public sealed partial class ModsPage : Page
         LabelTextButton(UninstallButton, UninstallButtonText, Loc.T("mods.uninstallHint"));
 
         UpdateDetails();   // 徽标 / 按钮可用状态在语言切换后也要跟着刷新
+        RefreshImportResultCards();   // 导入结果卡片里的文字同理
     }
 
     // ------------------------------------------------------------------ 载入
@@ -2120,24 +2121,64 @@ public sealed partial class ModsPage : Page
 
         await LoadAsync();
 
-        var lines = new List<string> { Loc.T("mods.importApplied", result.Applied) };
-        if (result.Missing.Count > 0)
-        {
-            lines.Add(Loc.T("mods.importMissing", result.Missing.Count));
-        }
+        // ==== 导入结果：成功与警告分成两张卡片 ====
+        // 成功卡只放「做成了什么」，警告卡只放「还需要你做什么」——
+        // 混在一起时读者分不清哪句是完成、哪句是待办。
+        ImportResultHeader.Text = Loc.T("mods.importDone");
+        ImportOkCard.Title = Loc.T("mods.importOkCardTitle");
+        ImportOkCard.Message = Loc.T("mods.importApplied", result.Applied)
+            + (result.Missing.Count > 0 ? "\n" + Loc.T("mods.importMissing", result.Missing.Count) : "");
+
+        var warnings = new List<string>();
         if (result.OptionFolderChanges.Count > 0)
         {
-            lines.Add(Loc.T("mods.importOptionDiff",
+            warnings.Add(Loc.T("mods.importOptionDiff",
                 string.Join("、", result.OptionFolderChanges.Take(3).Select(c => c.Name))));
         }
-        lines.Add(Loc.T("mods.reprocessPending"));
+        // 「需执行重新合并后生效」不属于问题，只是提示下一步，但和警告同属
+        // 「还需动手」那一类，放同一张卡里。
+        warnings.Add(Loc.T("mods.reprocessPending"));
 
-        Notice.IsOpen = true;
-        Notice.Severity = result.Missing.Count + result.OptionFolderChanges.Count > 0
-            ? InfoBarSeverity.Warning
-            : InfoBarSeverity.Success;
-        Notice.Title = Loc.T("mods.importDone");
-        Notice.Message = string.Join("  ", lines);
+        ImportWarnCard.Title = Loc.T("mods.importWarnCardTitle");
+        ImportWarnCard.Message = string.Join("\n", warnings);
+        ImportWarnCard.IsOpen = true;
+
+        ImportResultPanel.Visibility = Visibility.Visible;
+        ImportResultPanel.IsExpanded = true;
+
+        // 顶部那条通用通知不重复报同一件事，收起来。
+        Notice.IsOpen = false;
+
+        // 语言切换时卡片里的文字要跟着变，所以把结果留在字段里，ApplyLanguage 重刷。
+        _lastImportResult = result;
+    }
+
+    /// <summary>最近一次导入的结果 —— 切换语言时用来重刷卡片文字。</summary>
+    private ApplyProfileResult? _lastImportResult;
+
+    /// <summary>按当前语言重刷导入结果卡片（切语言 / 重新进入页面时调用）。</summary>
+    private void RefreshImportResultCards()
+    {
+        var result = _lastImportResult;
+        if (result is null) return;
+
+        ImportResultHeader.Text = Loc.T("mods.importDone");
+        ImportOkCard.Title = Loc.T("mods.importOkCardTitle");
+        ImportOkCard.Message = Loc.T("mods.importApplied", result.Applied)
+            + (result.Missing.Count > 0 ? "\n" + Loc.T("mods.importMissing", result.Missing.Count) : "");
+
+        var warnings = new List<string>();
+        if (result.OptionFolderChanges.Count > 0)
+        {
+            warnings.Add(Loc.T("mods.importOptionDiff",
+                string.Join("、", result.OptionFolderChanges.Take(3).Select(c => c.Name))));
+        }
+        warnings.Add(Loc.T("mods.reprocessPending"));
+
+        ImportWarnCard.Title = Loc.T("mods.importWarnCardTitle");
+        ImportWarnCard.Message = string.Join("\n", warnings);
+        ImportWarnCard.IsOpen = true;
+        ImportResultPanel.Visibility = Visibility.Visible;
     }
 
     /// <summary>调后端方法但把异常吞成 null —— 用于弹窗里「顺便列一下」的非关键数据。</summary>

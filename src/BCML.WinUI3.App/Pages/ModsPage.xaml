@@ -44,6 +44,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -135,6 +136,42 @@
         <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
 
         <!--
+            导入结果：成功摘要与警告分成**两张卡片**（下面第 2 行）。
+
+            为什么不再挤在一条 InfoBar 里：一条 InfoBar 只有一个 Title 和一个 Message，
+            把「已应用 18 个模组」＋「选项不一致需重装」＋「需重新合并」全塞进 Message，
+            就是一大段连续文字，读的人分不清哪句是成功、哪句是要动手处理的事。
+
+            用 Expander 包住：结果只在导入后才有意义，收起来时不占主界面的高度；
+            两张卡片各自带图标与标题，等级一眼可辨。无警告时只显示成功卡。
+        -->
+        <muxc:Expander
+            x:Name="ImportResultPanel"
+            Grid.Row="2"
+            Margin="0,0,0,10"
+            Visibility="Collapsed"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch">
+            <muxc:Expander.Header>
+                <TextBlock x:Name="ImportResultHeader" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            </muxc:Expander.Header>
+            <StackPanel Spacing="8">
+                <muxc:InfoBar
+                    x:Name="ImportOkCard"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Severity="Success"
+                    HorizontalAlignment="Stretch" />
+                <muxc:InfoBar
+                    x:Name="ImportWarnCard"
+                    IsOpen="False"
+                    IsClosable="False"
+                    Severity="Warning"
+                    HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </muxc:Expander>
+
+        <!--
             主从布局：左列表 / 右详情。
 
             列表为什么向右多留 18px：ListView 内部那层 ScrollViewer 的滚动条是
@@ -144,7 +181,7 @@
             既不再压住卡片，看着也像那条缝本身就是给滚动条留的。
             18 = ScrollBarSize 16 + 一点余量；再靠 ColumnSpacing=12 与详情栏拉开距离。
         -->
-        <Grid Grid.Row="2" ColumnSpacing="6">
+        <Grid Grid.Row="3" ColumnSpacing="6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="200" />
                 <ColumnDefinition Width="Auto" />

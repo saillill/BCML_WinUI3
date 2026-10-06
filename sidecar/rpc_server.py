@@ -1708,20 +1708,212 @@ def apply_mod_options(params) -> dict:
     finally:
         _rmtree_robust(staging)
 
-    # 3) 记账：options.json 里同时保留 BCML 自己的 disable/options 字段
+    # 3) 把选中的选项**真正注入模组内容**，并重算合并日志。
+    #
+    #    这一步当初漏了，直接导致「重选选项不起作用」：
+    #    BCML 合并不看 options/ 目录里有什么，它看的是模组根目录下的文件 +
+    #    logs/ 里的日志。原版 install_mod 在收到 selects 时做两件事：
+    #      a) 把选中选项目录里的文件 hardlink 到模组根（同名 SARC 会做合并
+    #         而不是覆盖，见 install.py 的 FileExistsError 分支）；
+    #      b) 之后由 generate_logs 按 options 字典重算 logs/。
+    #    我们只重建了 options/ 就又调 remerge，remerge 读到的还是安装时那份
+    #    日志，于是选项等于没换。
+    #
+    #    注入沿用 BCML 的语义：先清掉「上次注入留下的、且这次不再选」的文件。
+    #    哪些是上次注入的？options/ 目录里的文件与模组根同名同相对路径的那些。
+    #    这样不动模组本体自己的文件（它们和任何选项目录都不同名）。
+    #    同名 SARC（.pack 等）走**合并**而非覆盖 —— 见 _place_option_file 的说明；
+    #    顺序沿用用户的选择顺序，与 install_mod 一致。
+    _inject_option_files(mod, options_dir, applied, order=params.get("selects"))
+
+    # 4) 记账：BCML 只认 `disable` / `options` 两个字段，**不读 `selects`**。
+    #    `options` 是「按合并器分组的选项字典」，不是目录列表，所以不能拿
+    #    applied 往里塞 —— 塞错了会让 merger.set_options 拿到 garbage。
+    #    保留原有内容，只补 keep 一份 selects 供我们自己回显已选项。
     data = _read_options_json(mod)
     data.setdefault("disable", [])
     data.setdefault("options", {})
     data["selects"] = applied
     _write_json_atomic(mod / "options.json", data)
 
+    # 5) 重算日志 —— 不做这步上面全白费（remerge 读的是 logs/）。
+    #    失败要明确报出来：宁可让用户看到「选项没生效」，
+    #    也好过悄悄跑完、结果还是默认选项。
+    try:
+        _regen_logs(mod, data)
+    except Exception as err:  # noqa: BLE001 - 原样抛给上层展示
+        raise RuntimeError(
+            f"选项文件已更新，但重算合并日志失败，选项不会生效：{err}"
+        ) from err
+
     _log_append(f"[modOptions] {mod.name}：应用 {len(applied)} 个选项"
-                f"（快照共 {len(snap_folders)} 个可选）")
+                f"（快照共 {len(snap_folders)} 个可选，已注入并重算日志）")
     return {
         "mod": str(mod),
         "applied": applied,
         "available": sorted(snap_folders | on_disk),
     }
+
+
+def _inject_option_files(mod: Path, options_dir: Path, applied, order=None) -> None:
+    """把 `options/<已选变体>/` 里的文件铺到模组根目录（BCML install_mod 的语义）。
+
+    为什么必须「先清后铺」：上一次重选可能选了别的变体，那些文件还留在模组根里，
+    不清理就会和这次的选择叠在一起（旧变体的文件持续生效）。
+
+    为什么要做 SARC 合并而不是覆盖（这条是「重选后游戏内容没变」的真正原因）：
+
+        少女动作包这类模组，**多个变体各自带一份同名 `Pack/TitleBG.pack`**
+        （实测 Walk_Girly 和 Run_Girly 各带一份）。原版 install_mod 铺文件时
+        `os.link` 会撞 FileExistsError，它就在那个分支里把两份 SARC **合并**
+        —— 保留旧 SARC 中不被新 SARC 覆盖的条目，再写入新 SARC 的全部条目。
+        我们之前直接 unlink + link（纯覆盖），结果是后铺的那一份把先铺的整份吃掉，
+        于是「重选选项」对 pack 层完全没有效果：根目录永远只有最后一份 pack。
+
+    因此这里逐行对齐 install_mod 的分支：
+        · 非 SARC 同名文件 → 覆盖（unlink + link）
+        · SARC 同名文件   → 合并（无法解析的任一侧退化为覆盖 / 跳过）
+
+    `order` 用于控制铺入顺序。原版按 `selects` 给出的顺序迭代，后铺的变体在
+    SARC 合并中优先级更高（同名条目以它为准）。传 None 时退回目录名的字典序，
+    与旧行为一致。
+    """
+    selected = set(applied)
+
+    # 1) 清掉上一次注入、这次不再选的文件。
+    #    注意：**只删「没有任何一个已选变体也提供」的文件**。
+    #    两个已选变体带同名 pack 时，那个 pack 是它们的合并结果，属于"已选"，
+    #    不能被这步删掉（否则每轮都要从零重建，且顺序敏感）。
+    still_wanted = set()
+    for name in selected:
+        src_dir = options_dir / name
+        if not src_dir.is_dir():
+            continue
+        for f in src_dir.rglob("*"):
+            if f.is_file():
+                still_wanted.add(f.relative_to(src_dir))
+
+    for opt in sorted(p for p in options_dir.glob("*") if p.is_dir()):
+        if opt.name in selected:
+            continue
+        for f in opt.rglob("*"):
+            if not f.is_file():
+                continue
+            rel = f.relative_to(opt)
+            if rel in still_wanted:
+                continue
+            target = mod / rel
+            if target.exists():
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+
+    # 2) 铺入这次选中的文件，顺序沿用调用方给的选择顺序
+    names = list(order) if order else sorted(selected)
+    for name in names:
+        src_dir = options_dir / name
+        if not src_dir.is_dir():
+            continue
+        for f in src_dir.rglob("*"):
+            if not f.is_file():
+                continue
+            target = mod / f.relative_to(src_dir)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _place_option_file(f, target)
+
+
+def _place_option_file(src: Path, target: Path) -> None:
+    """把单个选项文件放到 target（对齐 install_mod 的 `os.link` 分支）。
+
+    - target 不存在 → 直接 hardlink（跨卷退回复制）
+    - target 已存在且是 SARC → **合并**，不是覆盖
+    - target 已存在且不是 SARC → 覆盖
+    """
+    if not target.exists():
+        _link_or_copy(src, target)
+        return
+
+    from bcml import util as _bcml_util  # noqa: PLC0415 - 延迟导入
+
+    if src.suffix.lower() not in {e.lower() for e in _bcml_util.SARC_EXTS}:
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        _link_or_copy(src, target)
+        return
+
+    import oead  # noqa: PLC0415 - BCML 自带
+
+    # 旧内容解析失败 → 就当它不可合并，直接用新文件顶上
+    try:
+        old_sarc = oead.Sarc(_bcml_util.unyaz_if_needed(target.read_bytes()))
+    except Exception:  # noqa: BLE001 - BCML 原文也是宽 except
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        _link_or_copy(src, target)
+        return
+
+    # 新内容解析失败 → 保留旧的（跳过后铺这一份，与 BCML 一致）
+    try:
+        link_sarc = oead.Sarc(_bcml_util.unyaz_if_needed(src.read_bytes()))
+    except Exception:  # noqa: BLE001
+        del old_sarc
+        return
+
+    writer = oead.SarcWriter.from_sarc(link_sarc)
+    incoming = {f.name for f in link_sarc.get_files()}
+    for old_file in old_sarc.get_files():
+        if old_file.name not in incoming:
+            writer.files[old_file.name] = bytes(old_file.data)
+    del old_sarc
+    del link_sarc
+
+    # 合并结果写回 target。此时 target 可能还硬链接着某个已选变体的源文件，
+    # 而写 bytes 会改动同一 inode —— 先把链接解开，避免污染 options/ 里的原件。
+    try:
+        target.unlink()
+    except OSError:
+        pass
+    target.write_bytes(writer.write()[1])
+    del writer
+
+
+def _link_or_copy(src: Path, target: Path) -> None:
+    """优先硬链接（省磁盘，与 BCML 一致），不支持时退回复制。"""
+    try:
+        os.link(src, target)
+    except OSError:
+        shutil.copy2(src, target)
+
+
+def _regen_logs(mod: Path, options: dict) -> None:
+    """调 BCML 自己的 generate_logs 重算 logs/。
+
+    必须复用 BCML 的实现而不是自己写：日志格式与合并器选项的消费方式都在它手里，
+    自己写一份必然与 remerge 时读的那份对不上。
+
+    logs/ 先删掉 —— generate_logs 是增量追加语义，留着旧日志会让已经不存在的
+    旧选项残留下来（正是「换了选项但没生效」的另一半原因）。
+    """
+    _require_bcml()
+    from bcml import install as _bcml_install  # noqa: PLC0415 - 延迟导入，缩短启动时间
+
+    logs = mod / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    for f in logs.glob("*"):
+        try:
+            if f.is_dir():
+                shutil.rmtree(f, ignore_errors=True)
+            else:
+                f.unlink()
+        except OSError:
+            pass
+
+    _bcml_install.generate_logs(tmp_dir=mod, options=options)
 
 
 def _child_kwargs() -> dict:
