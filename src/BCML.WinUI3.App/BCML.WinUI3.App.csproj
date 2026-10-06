@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>BCML.WinUI3.App</RootNamespace>
+    <AssemblyName>BCML-WinUI3</AssemblyName>
+
+    <!-- 应用图标：编译进 apphost.exe 的 Win32 资源。
+         非打包（unpackaged）应用的任务栏 / 资源管理器 / 桌面快捷方式图标都取这里，
+         不设的话 exe 会是 .NET 的默认空白图标。
+         用的是 BCML 官方图标（与上游 Python 版的 BCML.lnk 保持一致）。 -->
+    <ApplicationIcon>Assets\BCML.ico</ApplicationIcon>
+
+    <Version>$(AppVersion)</Version>
+
+    <!-- 仅 x64：BCML 的 oead 是 win_amd64 原生扩展，sidecar 必须是 64 位进程才能 import。 -->
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!-- 非打包（unpackaged）模型：便于直接跑 sidecar、也便于将来接 Inno Setup。 -->
+    <WindowsPackageType>None</WindowsPackageType>
+
+    <!-- 默认自包含（免装 Windows App Runtime）；
+         命令行可用 -p:SelfContained=false -p:WindowsAppSDKSelfContained=false 切框架依赖。 -->
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
+
+    <!-- 由 Program.cs 接管入口，以便在创建任何 XAML 对象前完成单实例判定 -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <UseWinUI>true</UseWinUI>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!--
+      保留 portable PDB。
+      之前是 DebugType=none + DebugSymbols=false —— 意味着一旦用户在别处崩了，
+      startup.log 里只有类型名和消息，**没有任何行号**，基本没法定位。
+      portable PDB 只有几百 KB，而且打包时会排除（见 build_release.py 的 skip_ext），
+      不进 zip、只留在发布目录里，留着排查用。
+    -->
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BCML.WinUI3.Core\BCML.WinUI3.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+
+  <!--
+    sidecar 的 Python 脚本要随应用一起走：否则发布目录里没有 rpc_server.py，
+    应用启动时找不到后端。用 Content + PreserveNewest 保证 bin/ 与 publish/ 都有。
+  -->
+  <ItemGroup>
+    <Content Include="..\..\sidecar\rpc_server.py">
+      <Link>sidecar\rpc_server.py</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!--
+    dotnet publish 不会把应用自己的 .pri 复制到 publish 目录，而它是编译后 XAML（XBF）的载体。
+    缺失时 InitializeComponent 会在运行时抛 XamlParseException（表现为"窗口打不开"）。
+    bin/ 里该文件正常生成，只是没随 publish 走，这里补上。
+  -->
+  <Target Name="CopyAppPriToPublish" AfterTargets="Publish" Condition="Exists('$(OutputPath)$(AssemblyName).pri')">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).pri"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+</Project>

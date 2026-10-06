@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BCML.WinUI3.App.Pages.ModsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:BCML.WinUI3.App.Pages"
+    xmlns:controls="using:BCML.WinUI3.App.Controls"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <Grid Padding="20,16,20,12" RowSpacing="10">
+        <VisualStateManager.VisualStateGroups>
+            <!-- 窗口窄时同步缩窄右侧详情栏，封面图也跟着变矮，保证两栏协调 -->
+            <VisualStateGroup x:Name="DetailWidthStates">
+                <VisualState x:Name="DetailWide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1150" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="DetailPane.Width" Value="470" />
+                        <Setter Target="DetailCoverBox.Height" Value="210" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="DetailMedium">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="900" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="DetailPane.Width" Value="350" />
+                        <Setter Target="DetailCoverBox.Height" Value="168" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="DetailNarrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="DetailPane.Width" Value="260" />
+                        <Setter Target="DetailCoverBox.Height" Value="126" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 页头：标题 + 工具栏。工具栏是原生 CommandBar，放不下时它自己收进 ⋯ 溢出菜单。 -->
+        <Grid x:Name="PageHeader" Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="PageTitle"
+                Grid.Column="0"
+                Text="模组"
+                VerticalAlignment="Center"
+                Style="{StaticResource TitleTextBlockStyle}" />
+
+            <!--
+                工具条用原生 CommandBar，而不是自绘的 WrapPanel：
+                  · PrimaryCommands = 「会动数据」的主动作，用 AppBarSeparator 分成
+                    「装 / 合 / 备」与「刷新 / 视图 / 排序」两组，主次一眼能看出来；
+                  · SecondaryCommands = 破坏性动作（卸载全部），由控件自己收进 ⋯ 菜单，
+                    不再手写 Flyout；
+                  · 窗口变窄时 CommandBar 自动把放不下的挪进溢出菜单 ——
+                    原来那个 WrapPanel 的换行位置会随内容漂移，看起来毫无规律。
+                图标用 FontIcon 显式写 glyph（等价于 Symbol，但不依赖枚举名拼写）。
+                注：ClosedDisplayMode 的枚举（AppBarClosedDisplayMode）只有 Hidden/Minimal/Compact，
+                没有 Full —— 标签显不显示由 DefaultLabelPosition 决定，不是它。
+
+                命令**全部**放进 PrimaryCommands：窗口够宽时直接显示，不够宽时由 CommandBar
+                自己收进 ⋯ —— 而不是像以前那样不管有没有空间都固定塞在溢出菜单里。
+                LabelPosition 用 Right：实测 Bottom 在 Compact 模式下不显示标签（只剩图标），
+                Right 才会把标签带出来；标签在右边时按钮更宽，但这条窗口放得下。
+            -->
+            <muxc:CommandBar
+                x:Name="ToolBar"
+                Grid.Column="1"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                ClosedDisplayMode="Compact"
+                DefaultLabelPosition="Right"
+                IsOpen="False">
+                <AppBarButton x:Name="InstallButton" Click="Install_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE710;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="RemergeButton" Click="Remerge_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE72D;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton x:Name="BackupButton" Click="Backup_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE74E;" /></AppBarButton.Icon>
+                </AppBarButton>
+
+                <AppBarSeparator />
+
+                <AppBarButton x:Name="RefreshButton" Click="Refresh_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE72C;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarToggleButton x:Name="ShowDisabledToggle" IsChecked="True"
+                                    Click="ShowDisabledToggle_Changed">
+                    <AppBarToggleButton.Icon><FontIcon Glyph="&#xE890;" /></AppBarToggleButton.Icon>
+                </AppBarToggleButton>
+
+                <AppBarSeparator />
+
+                <!-- 只留「反转顺序」一个按钮。不能做成"升序 / 降序"两个方向：
+                     优先级就是目录名里的编号，而每次落盘都按当前显示顺序从 0100 连续编号，
+                     所以列表永远是"从上到下递增"——"按优先级升序"是恒等操作，点了必然没反应。
+                     详见 ReverseOrder_Click 的注释。 -->
+                <AppBarButton x:Name="ReverseOrderButton" Click="ReverseOrder_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE8CB;" /></AppBarButton.Icon>
+                </AppBarButton>
+
+                <AppBarSeparator />
+
+                <!-- 图标与列表里每行的抓手一致，一眼能对上"这个开关管的就是那排抓手" -->
+                <AppBarToggleButton x:Name="ShowHandlesToggle" IsChecked="False"
+                                    Click="ShowHandlesToggle_Changed">
+                    <AppBarToggleButton.Icon><FontIcon Glyph="&#xE76F;" /></AppBarToggleButton.Icon>
+                </AppBarToggleButton>
+
+                <AppBarSeparator />
+
+                <AppBarButton x:Name="UninstallAllItem" Click="UninstallAll_Click">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE74D;" /></AppBarButton.Icon>
+                </AppBarButton>
+            </muxc:CommandBar>
+        </Grid>
+
+        <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <!-- 主从布局：左列表 / 右详情 -->
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="200" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ListView
+                x:Name="ModList"
+                Grid.Column="0"
+                SelectionMode="Single"
+                ItemsSource="{x:Bind Rows}"
+                CanDragItems="False"
+                CanReorderItems="False"
+                AllowDrop="False"
+                ReorderMode="Disabled"
+                SelectionChanged="ModList_SelectionChanged"
+                DragItemsCompleted="ModList_DragItemsCompleted">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0,0,0,5" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:ModRow">
+                        <Border
+                            CornerRadius="6"
+                            Padding="10,8"
+                            BorderThickness="1"
+                            AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 拖拽手柄：只有打开「排序模式」后才出现。
+                                     提示文案不写死在模板里 —— 模板内的静态中文在英文界面下不会跟着切换，
+                                     统一由工具栏开关的 Hint 说明该功能的含义。 -->
+                                <FontIcon
+                                    Grid.Column="0"
+                                    Glyph="&#xE76F;"
+                                    FontSize="16"
+                                    Margin="0,0,-4,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Visibility="{x:Bind HandleVisibility, Mode=OneWay}" />
+
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Width="38"
+                                    VerticalAlignment="Center"
+                                    TextAlignment="Center"
+                                    FontFamily="Consolas"
+                                    FontSize="14"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="{x:Bind PriorityText, Mode=OneWay}" />
+
+                                <Border
+                                    Grid.Column="2"
+                                    Width="76" Height="76"
+                                    CornerRadius="4"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                    <Grid>
+                                        <FontIcon
+                                            Glyph="&#xE8B9;"
+                                            FontSize="22"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Visibility="{x:Bind PlaceholderVisibility, Mode=OneWay}" />
+                                        <Image
+                                            Stretch="UniformToFill"
+                                            Source="{x:Bind Thumbnail, Mode=OneWay}"
+                                            Visibility="{x:Bind ThumbnailVisibility, Mode=OneWay}" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock
+                                        Text="{x:Bind Name, Mode=OneWay}"
+                                        TextWrapping="Wrap"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <Border
+                                        Visibility="{x:Bind DisabledBadgeVisibility, Mode=OneWay}"
+                                        CornerRadius="3" Padding="5,1"
+                                        HorizontalAlignment="Left"
+                                        BorderThickness="1"
+                                        BorderBrush="{ThemeResource SystemFillColorCriticalBrush}">
+                                        <TextBlock
+                                            Text="{x:Bind DisabledBadge}"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                    </Border>
+                                </StackPanel>
+
+                                <!--
+                                    TwoWay 绑定，**不挂 Toggled**。
+                                    原因：ToggleSwitch.Toggled 对程序性的 IsOn 变化也会触发 ——
+                                    列表重排时 ListView 回收复用行容器，绑定把新行的值推进 IsOn 就又触发一次，
+                                    而那一刻 DataContext 可能还停在上一行，于是会把**别的模组**启用/禁用掉
+                                    （真的写 .disabled 文件）。
+                                    而 TwoWay 绑定**只有用户拨动控件时才会写回模型**，程序性回填只走
+                                    "模型 → 控件"这一个方向、不产生任何通知。所以改为监听模型属性变化
+                                    （见 ModsPage.OnRowPropertyChanged），每一次都必然来自用户。
+                                -->
+                                <ToggleSwitch
+                                    Grid.Column="4"
+                                    VerticalAlignment="Center"
+                                    MinWidth="0"
+                                    OffContent=""
+                                    OnContent=""
+                                    IsOn="{x:Bind Enabled, Mode=TwoWay}"
+                                    IsEnabled="{x:Bind NotBusy, Mode=OneWay}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <!-- ============================ 详情 ============================ -->
+            <Border
+                x:Name="DetailPane"
+                Grid.Column="1"
+                Width="470"
+                CornerRadius="6"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <ScrollViewer Padding="14">
+                    <StackPanel Spacing="12">
+
+                        <Border
+                            x:Name="DetailCoverBox"
+                            CornerRadius="6"
+                            Height="210"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                            <Grid>
+                                <FontIcon
+                                    x:Name="DetailCoverPlaceholder"
+                                    Glyph="&#xE8B9;"
+                                    FontSize="44"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" />
+                                <Image
+                                    x:Name="DetailCover"
+                                    Stretch="Uniform"
+                                    Visibility="Collapsed" />
+                                <Border
+                                    x:Name="DetailDisabledOverlay"
+                                    Visibility="Collapsed"
+                                    Background="{ThemeResource BusyScrimBrush}"
+                                    CornerRadius="6">
+                                    <TextBlock
+                                        x:Name="DetailDisabledOverlayText"
+                                        Text="已禁用"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource SubtitleTextBlockStyle}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- 标题 + 徽标（版本 / 平台 / 启用状态），徽标在代码里按实际字段拼 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock
+                                x:Name="DetailTitle"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="未选择模组" />
+                            <controls:WrapPanel
+                                x:Name="DetailBadges"
+                                HorizontalSpacing="6"
+                                VerticalSpacing="6"
+                                Visibility="Collapsed" />
+                        </StackPanel>
+
+                        <!-- 未选择模组时下面整块都不显示 -->
+                        <TextBlock
+                            x:Name="NoSelectionHint"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            Style="{StaticResource CaptionSecondaryTextStyle}"
+                            Text="从左侧列表中选择一个模组以查看详情。" />
+
+                        <!-- 键值信息表：行由代码按「有值的字段」动态填充。
+                             用 Expander 默认折叠 —— 版本/作者/文件夹/优先级这类属于"想看才看"的信息，
+                             摊开占掉大半个详情栏，把真正要点的「可用操作」挤到很下面。 -->
+                        <muxc:Expander x:Name="InfoSection" Visibility="Collapsed"
+                                       HorizontalAlignment="Stretch"
+                                       HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <TextBlock x:Name="InfoSectionTitle" Text="模组信息"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            </muxc:Expander.Header>
+                            <Grid x:Name="InfoGrid" ColumnSpacing="10" RowSpacing="3" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                            </Grid>
+                        </muxc:Expander>
+
+                        <!-- 前置依赖：没有依赖时整段隐藏 -->
+                        <StackPanel x:Name="DependsSection" Spacing="5" Visibility="Collapsed">
+                            <TextBlock x:Name="DependsSectionTitle" Text="前置依赖" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <controls:WrapPanel x:Name="DependsWrap" HorizontalSpacing="6" VerticalSpacing="6" />
+                        </StackPanel>
+
+                        <!-- 已启用的选项目录（默认折叠） -->
+                        <muxc:Expander x:Name="OptionsSection" Visibility="Collapsed"
+                                       HorizontalAlignment="Stretch"
+                                       HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <TextBlock x:Name="OptionsSectionTitle" Text="已启用选项"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            </muxc:Expander.Header>
+                            <controls:WrapPanel x:Name="OptionsWrap" HorizontalSpacing="6" VerticalSpacing="6"
+                                                Margin="0,4,0,0" />
+                        </muxc:Expander>
+
+                        <StackPanel x:Name="DisabledMergersSection" Spacing="5" Visibility="Collapsed">
+                            <TextBlock x:Name="DisabledMergersSectionTitle" Text="已关闭的合并器" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <controls:WrapPanel x:Name="DisabledMergersWrap" HorizontalSpacing="6" VerticalSpacing="6" />
+                        </StackPanel>
+
+                        <!-- 内容描述：该模组没有描述时整段隐藏 -->
+                        <StackPanel x:Name="DescSection" Spacing="4" Visibility="Collapsed">
+                            <TextBlock x:Name="DescSectionTitle" Text="内容描述" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <RichTextBlock
+                                x:Name="DetailDesc"
+                                TextWrapping="Wrap"
+                                IsTextSelectionEnabled="True"
+                                LineHeight="20" />
+                        </StackPanel>
+
+                        <!-- 涉及改动（默认折叠） -->
+                        <muxc:Expander x:Name="ChangesSection" Visibility="Collapsed"
+                                       HorizontalAlignment="Stretch"
+                                       HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <TextBlock x:Name="ChangesSectionTitle" Text="涉及改动"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            </muxc:Expander.Header>
+                            <controls:WrapPanel x:Name="DetailChanges" HorizontalSpacing="6" VerticalSpacing="6"
+                                                Margin="0,4,0,0" />
+                        </muxc:Expander>
+
+                        <!-- 改动明细：按合并器分组的文件清单，逐组折叠（外层也默认折叠）。
+                             数据来自 sys.modDetails，与上面的元数据是同一次请求，
+                             所以折叠起来并不会省掉一次后端调用，纯粹是不占版面。
+                             摘要留在 Header 上，折叠状态下也能一眼看到"改了多少"。 -->
+                        <muxc:Expander x:Name="EditsSection" Visibility="Collapsed"
+                                       HorizontalAlignment="Stretch"
+                                       HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        x:Name="EditsSectionTitle"
+                                        Grid.Column="0"
+                                        Text="改动明细"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock
+                                        x:Name="EditsSummary"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        TextTrimming="CharacterEllipsis"
+                                        Style="{StaticResource CaptionSecondaryTextStyle}" />
+                                    <ProgressRing
+                                        x:Name="EditsBusy"
+                                        Grid.Column="2"
+                                        Width="16"
+                                        Height="16"
+                                        IsActive="False"
+                                        Visibility="Collapsed" />
+                                </Grid>
+                            </muxc:Expander.Header>
+                            <StackPanel x:Name="EditsList" Spacing="2" Margin="0,4,0,0" />
+                        </muxc:Expander>
+
+                        <!-- 可用操作：原版是图标按钮条，9 个按钮在 470px 详情栏里正好一行
+                             （9×40 + 8×6 = 408px）。WinUI 的 Button 默认 MinWidth=120，
+                             必须显式压成 40 才排得下；窗口继续收窄时由 WrapPanel 自动折成两行。 -->
+                        <StackPanel x:Name="ActionsSection" Spacing="6" Visibility="Collapsed">
+                            <TextBlock x:Name="ActionsSectionTitle" Text="可用操作" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <controls:WrapPanel x:Name="ActionsWrap" HorizontalSpacing="6" VerticalSpacing="6">
+                                <Button x:Name="ExploreButton" Click="Explore_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="UrlButton" Click="Url_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE71B;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="ToggleEnabledButton" Click="ToggleEnabled_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon x:Name="ToggleEnabledIcon" Glyph="&#xE8FB;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="UpdateButton" Click="Update_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="UpButton" Click="Up_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE70E;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="DownButton" Click="Down_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="ReprocessButton" Click="Reprocess_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="OptionsButton" Click="Options_Click" Visibility="Collapsed" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE9D5;" FontSize="14" />
+                                </Button>
+                                <Button x:Name="UninstallButton" Click="Uninstall_Click" Style="{StaticResource IconActionButtonStyle}">
+                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                </Button>
+                            </controls:WrapPanel>
+                        </StackPanel>
+
+                        <muxc:InfoBar
+                            x:Name="DetailNotice"
+                            IsOpen="False"
+                            IsClosable="True"
+                            Severity="Informational" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

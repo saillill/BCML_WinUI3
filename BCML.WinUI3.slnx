@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/BCML.WinUI3.App/BCML.WinUI3.App.csproj" />
+  <Project Path="src/BCML.WinUI3.Core/BCML.WinUI3.Core.csproj" />
+</Solution>

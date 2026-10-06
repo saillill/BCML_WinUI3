@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="BCML.WinUI3.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 只引入官方控件资源：不自定义任何颜色/画刷，强调色与浅色/深色/高对比度
+                     全部交给官方 ThemeDictionaries 自动切换。 -->
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- 副标题/说明文字统一用这个，避免各处硬编码灰色。 -->
+            <Style x:Key="CaptionSecondaryTextStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
+            <!--
+                紧凑图标按钮（模组详情区的操作条）。
+                WinUI 的 Button 默认 MinWidth=120、Padding=12,6 —— 9 个按钮根本排不进
+                470px 的详情栏。这里压成 40×40 的方块，图标居中，文字交给 ToolTip。
+
+                尺寸取 40×40 而不是更小的 36×34：40 是 Windows 无障碍（触控/指针）
+                建议的最小命中区。核算：9 个按钮 × 40 + 8 个间距 × 6 = 408px < 470px，
+                一行仍放得下；窗口收窄时由外层 WrapPanel 自动折行。
+            -->
+            <Style x:Key="IconActionButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <!--
+                忙碌遮罩的底色。不用框架的 Smoke* 资源：那是给 ContentDialog 的烟雾层准备的，
+                名称与可用性在不同 WinUI 版本间不稳。这里按主题各给一个半透明色，
+                保证浅色主题下遮罩后的文字仍然是深色、深色主题下是浅色。
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="BusyScrimBrush" Color="#99FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="BusyScrimBrush" Color="#B3000000" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="BusyScrimBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

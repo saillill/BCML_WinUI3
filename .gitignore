@@ -1,0 +1,29 @@
+# ---- 构建产物（都不该进版本库）----
+publish/
+artifacts/
+shots/
+
+# .NET 中间产物与输出
+bin/
+obj/
+*.user
+
+# ---- 下载缓存 ----
+# tools/make_runtime.py 会把官方 python-3.9.13-embed-amd64.zip 缓存在这里（约 8.6 MB），
+# 它是可重新下载的，不必入库。
+tools/cache/
+__pycache__/
+*.pyc
+
+# ---- 运行时组装产物 ----
+# 如果将来把 runtime 直接生成到仓库里（而不是 publish/），也要挡住
+runtime/
+
+# ---- 本地个人配置 ----
+.vs/
+.vscode/
+*.suo
+
+# 注意：以下这些**必须**入库，不要误加规则
+#   tools/*.ps1                  UI 自动化 / 截图脚本
+#   src/BCML.WinUI3.App/Assets/BCML.ico   应用图标（csproj 的 ApplicationIcon 要用）

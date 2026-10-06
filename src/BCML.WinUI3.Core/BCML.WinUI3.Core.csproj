@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>BCML.WinUI3.Core</RootNamespace>
+    <AssemblyName>BCML.WinUI3.Core</AssemblyName>
+
+    <!-- 仅 x64：BCML 的 oead 是 win_amd64 原生扩展，必须是 64 位进程。 -->
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!-- Core 是纯逻辑库：不引用 WindowsAppSDK，也不生成 XAML。 -->
+    <UseWinUI>false</UseWinUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+
+</Project>

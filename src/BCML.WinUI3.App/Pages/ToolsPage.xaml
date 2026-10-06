@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BCML.WinUI3.App.Pages.ToolsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:BCML.WinUI3.App.Pages"
+    xmlns:models="using:BCML.WinUI3.Core.Models">
+
+    <Page.Resources>
+        <!-- 工具卡片的统一外观：标题 + 说明 + 内容 -->
+        <Style x:Key="ToolCard" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Style" Value="{StaticResource CaptionSecondaryTextStyle}" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Padding="20,12,20,0" RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="PageHeader" Grid.Row="0">
+            <TextBlock
+                x:Name="TitleText"
+                Text="工具"
+                VerticalAlignment="Center"
+                Style="{StaticResource TitleTextBlockStyle}" />
+        </Grid>
+
+        <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="18" MaxWidth="1080" HorizontalAlignment="Left" Padding="0,0,0,20">
+
+                <!-- ==================== BNP 平台转换 ==================== -->
+                <TextBlock x:Name="SecConvert" Text="BNP 平台转换" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="ConvertHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="SourceBox" Grid.Column="0" IsReadOnly="True" />
+                            <Button x:Name="PickSourceButton" Grid.Column="1" Click="PickSource_Click"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <RadioButton x:Name="TargetSwitch" GroupName="target" IsChecked="True" Content="Switch (.bnp)" />
+                            <RadioButton x:Name="TargetWiiU" GroupName="target" Content="Wii U (.bnp)" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <RadioButton x:Name="WarnSkip" GroupName="warn" IsChecked="True" />
+                            <RadioButton x:Name="WarnFail" GroupName="warn" />
+                        </StackPanel>
+
+                        <Button x:Name="ConvertButton" Click="Convert_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== BNP Creator ==================== -->
+                <TextBlock x:Name="SecCreator" Text="创建 BNP" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="CreatorHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+
+                        <TextBlock x:Name="CreatorFolderLabel" Style="{StaticResource FieldLabel}" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="CreatorFolderBox" Grid.Column="0" IsReadOnly="True" />
+                            <Button x:Name="CreatorPickFolderButton" Grid.Column="1" Click="CreatorPickFolder_Click"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                        </Grid>
+
+                        <TextBlock x:Name="MetaLabel" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
+                        <Grid ColumnSpacing="12" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0">
+                                <TextBlock x:Name="NameLabel" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="NameBox" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="1">
+                                <TextBlock x:Name="VersionLabel" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="VersionBox" Text="1.0.0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0">
+                                <TextBlock x:Name="AuthorLabel" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="AuthorBox" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Bottom">
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionSecondaryTextStyle}"
+                                           x:Name="AuthorNote" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.ColumnSpan="2">
+                                <TextBlock x:Name="IconLabel" Style="{StaticResource FieldLabel}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="IconBox" Grid.Column="0" />
+                                    <Button x:Name="CreatorPickIconButton" Grid.Column="1"
+                                            Click="CreatorPickIcon_Click"
+                                            VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                                </Grid>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="3" Grid.ColumnSpan="2">
+                                <TextBlock x:Name="DependsLabel" Style="{StaticResource FieldLabel}" />
+                                <TextBox x:Name="DependsBox" AcceptsReturn="True" TextWrapping="Wrap"
+                                         Height="62" FontFamily="Consolas" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock x:Name="OptionsSectionLabel" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
+                        <TextBlock x:Name="OptionsHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+
+                        <ItemsControl x:Name="OptionList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:BnpOptionDraft">
+                                    <Grid ColumnSpacing="8" Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="180" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox Grid.Column="0" SelectedIndex="{x:Bind MultiIndex, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBoxItem Content="{x:Bind MultiText}" />
+                                            <ComboBoxItem Content="{x:Bind SingleText}" />
+                                        </ComboBox>
+                                        <TextBox Grid.Column="1" Text="{x:Bind Raw, Mode=TwoWay}"
+                                                 PlaceholderText="组名=值1,值2,值3" />
+                                        <Button Grid.Column="2" Content="删除" Click="RemoveOption_Click"
+                                                Tag="{x:Bind}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button x:Name="AddOptionButton" Click="AddOption_Click" />
+
+                        <Button x:Name="CreateButton" Click="Create_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 升级旧 BNP ==================== -->
+                <TextBlock x:Name="SecUpgrade" Text="升级旧版 BNP" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="UpgradeHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="UpgradeBox" Grid.Column="0" IsReadOnly="True" />
+                            <Button x:Name="UpgradePickButton" Grid.Column="1" Click="UpgradePick_Click"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                        </Grid>
+                        <Button x:Name="UpgradeButton" Click="Upgrade_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== BNP 转独立模组 ==================== -->
+                <TextBlock x:Name="SecStandalone" Text="BNP 转为独立模组" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="StandaloneHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="StandaloneBox" Grid.Column="0" IsReadOnly="True" />
+                            <Button x:Name="StandalonePickButton" Grid.Column="1" Click="StandalonePick_Click"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                        </Grid>
+                        <Button x:Name="StandaloneButton" Click="Standalone_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 生成 RSTB ==================== -->
+                <TextBlock x:Name="SecRstb" Text="为模组生成 RSTB" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="RstbHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <TextBlock x:Name="RstbModLabel" Style="{StaticResource FieldLabel}" />
+                        <ComboBox x:Name="RstbModBox" HorizontalAlignment="Stretch" />
+                        <Button x:Name="RstbButton" Click="Rstb_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 模组编号修复 ==================== -->
+                <TextBlock x:Name="SecRepair" Text="修复模组编号" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="RepairHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <Button x:Name="RepairButton" Click="Repair_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 模组比对 ==================== -->
+                <TextBlock x:Name="SecCompare" Text="模组比对" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="12">
+                        <TextBlock x:Name="CompareHint" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock x:Name="CompareLeftLabel" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="CompareLeftBox" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="CompareRightLabel" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="CompareRightBox" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Button x:Name="CompareButton" Click="Compare_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+
+                        <TextBlock x:Name="CompareSummary" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionSecondaryTextStyle}" />
+
+                        <ListView x:Name="CompareResultList" MaxHeight="460" SelectionMode="None"
+                                  Visibility="Collapsed">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0,2" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:ModCompareGroup">
+                                    <Border CornerRadius="4" Padding="10,8" Margin="0,3"
+                                            BorderThickness="1"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{x:Bind Summary}" FontWeight="SemiBold"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <ItemsControl ItemsSource="{x:Bind OnlyLeft}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <TextBlock Text="{x:Bind}" FontFamily="Consolas" FontSize="11"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <ItemsControl ItemsSource="{x:Bind OnlyRight}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <TextBlock Text="{x:Bind}" FontFamily="Consolas" FontSize="11"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 合并输出与目录 ==================== -->
+                <TextBlock x:Name="SecOutput" Text="合并输出与目录" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="OpenMasterButton" Click="OpenMaster_Click" />
+                            <Button x:Name="OpenStoreButton" Click="OpenStore_Click" />
+                            <Button x:Name="RemergeButton" Click="Remerge_Click" />
+                        </StackPanel>
+                        <TextBlock x:Name="MasterPath" FontFamily="Consolas" FontSize="11"
+                                   IsTextSelectionEnabled="True" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 其他 ==================== -->
+                <TextBlock x:Name="SecPending" Text="其他原版功能" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border Style="{StaticResource ToolCard}">
+                    <TextBlock x:Name="PendingText" TextWrapping="Wrap" LineHeight="22" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BCML.WinUI3.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <Grid Padding="20,16,20,12" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="PageHeader" Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="TitleText"
+                Grid.Column="0"
+                Text="设置"
+                VerticalAlignment="Center"
+                Style="{StaticResource TitleTextBlockStyle}" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="ReloadButton" Click="Reload_Click" Content="重新读取" />
+                <Button x:Name="SaveButton" Click="Save_Click" Content="保存设置" />
+            </StackPanel>
+        </Grid>
+
+        <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <ScrollViewer Grid.Row="2">
+            <StackPanel Spacing="14" MaxWidth="1020" HorizontalAlignment="Left">
+
+                <!-- ============================ 游戏路径 ============================ -->
+                <TextBlock x:Name="SecGame" Text="游戏路径" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleSwitch
+                                x:Name="WiiuToggle"
+                                Grid.Column="0"
+                                OffContent="Switch"
+                                OnContent="Wii U"
+                                Toggled="WiiuToggle_Toggled" />
+                            <TextBlock
+                                x:Name="WiiuHint"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        </Grid>
+
+                        <!-- 路径行由代码生成：标签 + 说明 + 输入框 + 浏览/自动定位 + 校验状态 -->
+                        <StackPanel x:Name="PathList" Spacing="10" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ============================ 合并选项 ============================ -->
+                <TextBlock x:Name="SecOptions" Text="合并选项" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel x:Name="OptionList" Spacing="10" />
+                </Border>
+
+                <!-- ============================ 游戏语言 ============================ -->
+                <TextBlock x:Name="SecGameLang" Text="游戏语言" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="6" MaxWidth="420" HorizontalAlignment="Left">
+                        <TextBlock
+                            x:Name="GameLangHint"
+                            TextWrapping="Wrap"
+                            Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <ComboBox x:Name="GameLangBox" HorizontalAlignment="Stretch" />
+                        <TextBlock
+                            x:Name="GameLangNote"
+                            Margin="0,4,0,0"
+                            TextWrapping="Wrap"
+                            Style="{StaticResource CaptionSecondaryTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ============================ 界面 ============================ -->
+                <TextBlock x:Name="SecAppearance" Text="界面" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <Grid ColumnSpacing="24" RowSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                            <TextBlock x:Name="UiLangLabel" Text="界面语言" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                x:Name="UiLangHint"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource CaptionSecondaryTextStyle}" />
+                            <ComboBox x:Name="UiLangBox" HorizontalAlignment="Stretch" SelectionChanged="UiLangBox_SelectionChanged" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                            <TextBlock x:Name="ThemeLabel" Text="主题" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                x:Name="ThemeHint"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource CaptionSecondaryTextStyle}" />
+                            <ComboBox x:Name="ThemeBox" HorizontalAlignment="Stretch" SelectionChanged="ThemeBox_SelectionChanged" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ============================ BCML 数据目录 ============================ -->
+                <TextBlock x:Name="SecData" Text="BCML 数据目录" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            x:Name="DataDirHint"
+                            TextWrapping="Wrap"
+                            Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <StackPanel x:Name="DataDirList" Spacing="8" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ============================ 快捷方式 ============================ -->
+                <TextBlock x:Name="SecShortcuts" Text="创建快捷方式" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="12">
+                        <!-- 本应用：日常真正会用到的那个 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock x:Name="ShortcutAppLabel" Text="BCML-WinUI3（本应用）"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                x:Name="ShortcutAppHint"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource CaptionSecondaryTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ShortcutAppDesktopButton" Click="ShortcutAppDesktop_Click"
+                                        Style="{StaticResource AccentButtonStyle}" />
+                                <Button x:Name="ShortcutAppStartButton" Click="ShortcutAppStart_Click" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 命令行版 BCML：原版接口，对终端用户基本用不上，但保留对齐上游 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock x:Name="ShortcutCliLabel" Text="命令行版 BCML"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                x:Name="ShortcutHint"
+                                TextWrapping="Wrap"
+                                Style="{StaticResource CaptionSecondaryTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ShortcutDesktopButton" Click="ShortcutDesktop_Click" />
+                                <Button x:Name="ShortcutStartButton" Click="ShortcutStart_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ============================ 后端 ============================ -->
+                <TextBlock x:Name="SecBackend" Text="后端" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Border
+                    CornerRadius="6" Padding="14"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            x:Name="BackendHint"
+                            TextWrapping="Wrap"
+                            Style="{StaticResource CaptionSecondaryTextStyle}" />
+                        <TextBlock x:Name="BackendStatus" TextWrapping="Wrap" />
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PythonBox" Grid.Column="0" />
+                            <Button x:Name="BrowsePythonButton" Grid.Column="1" Click="BrowsePython_Click" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            <Button x:Name="RestartBackendButton" Grid.Column="2" Click="RestartBackend_Click" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            <!-- 与路径行同款的校验卡片 -->
+                            <Border
+                                x:Name="PythonStatusCard"
+                                Grid.Column="3"
+                                Width="34" Height="34"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                VerticalAlignment="Bottom"
+                                Margin="0,0,0,2"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                <FontIcon
+                                    x:Name="PythonStatusIcon"
+                                    Glyph="&#xE738;"
+                                    FontSize="14"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

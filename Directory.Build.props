@@ -1,0 +1,40 @@
+<Project>
+
+  <!--
+    跨项目共享的构建属性（MSBuild 自动导入到全部子项目）。
+
+    版本号单一来源 = 本文件的 <AppVersion>。改动后需同步核对：
+      * src/BCML.WinUI3.App/app.manifest            assemblyIdentity version（四段式）
+      * installers/installer.iss                    #define MyAppVersion（暂未建立）
+  -->
+
+  <PropertyGroup>
+    <AppVersion>0.1.0</AppVersion>
+
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!--
+    把 git 短 revision 写进程序集信息（InformationalVersion 变成 0.1.0+<sha>），
+    便于回答"这份二进制是哪次提交编出来的"。没有 git 时静默跳过，绝不因此构建失败。
+  -->
+  <Target Name="SetSourceRevisionIdFromGit" BeforeTargets="GenerateAssemblyInfo;GetAssemblyVersion"
+          Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git rev-parse --short HEAD"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitRevisionOutput" />
+    </Exec>
+    <PropertyGroup>
+      <_GitRevision>$(_GitRevisionOutput.Trim())</_GitRevision>
+      <SourceRevisionId Condition="'$(_GitRevision)' != ''">$(_GitRevision)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
+</Project>
