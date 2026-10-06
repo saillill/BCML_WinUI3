@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""生成 8 个整合包配置档案（原版伞/伞形伞 × 有/无少女动作 × 纯净版/增强版）。
+"""生成整合包配置档案（原版伞/伞形伞 × 有/无少女动作 × 纯净版/增强版）。
+
+按游戏本体版本分目录输出：1.6.0 / 1.8.2 / 1.9.0，每版 8 个，共 24 个。
+三个版本的游戏本体不同，但 mod 集合与选项**完全相同**（用户已确认），
+所以各版本的文件内容一致，只是分目录归档。
 
 ━━━ 规则（与用户逐条确认）━━━
 
@@ -13,26 +17,27 @@
 
 【纯净版 / 增强版】
     纯净版 = 只启用林可儿核心 7 个（0100–0106）+ 少女动作包（若有少女动作）
+             → 有少女动作 8 个 / 无少女动作 7 个
     增强版 = 0107–0116 的 10 个套装/NPC 模组也启用
+             → 有少女动作 18 个 / 无少女动作 17 个
 
-━━━ 一个必须知道的事实 ━━━
+━━━ 必须知道的：导入 ≠ 生效 ━━━
 
-林可儿模组**本体**的 `01007EF00011E000/romfs/Pack/TitleBG.pack` 里，
-已经固化了 Umbrella Glider 的 3 个条目（安装时注入并合并进本体，哈希与选项目录
-完全一致）：
+`apply_profile`（导入）**只写 `options.json` 的记录**，不重建 `options/` 目录、
+不撤销已注入模组本体的内容、也不重算 `logs/`。而 BCML 合并读的正是
+模组根目录文件 + `logs/`。因此：
 
-    Model/Item_Parastole2.sbfres        42 KB   洋伞模型
-    Model/Item_Parastole2.Tex.sbfres    58 KB   洋伞贴图
-    Model/Player_Animation.sbfres      17.7 MB  洋伞专属滑翔动作
+    · 导入「伞形伞」配置 → 仍是原版伞（除非本来就装着洋伞）
+    · 导入「原版伞」配置 → 仍是洋伞（Umbrella Glider 的 3 个条目
+      在导入该 mod 时就因 `default: true` 被注入本体 TitleBG.pack）
 
-**不勾选 Umbrella Glider 并不能删掉它们** —— 选项只影响 `options/` 目录，
-而这三个文件已经长在本体 pack 里了。所以「原版伞」需要额外清理本体 pack，
-见 `tools/strip_umbrella.py`。
-
-本脚本只负责生成清单；清理动作需要用户显式执行（改模组本体，不可逆）。
+**两者都需要再对林可儿点一次「重选选项」才真正生效**——那一步才会
+重建 `options/`、撤销未选项的注入、重算 `logs/`（详见 `apply_mod_options`）。
+所以原版伞配置会带上这条提示，见 `_note`。
 
 用法：
-    python tools/make_profiles_8.py [输出目录]      # 默认 ~/Downloads
+    python tools/make_profiles_8.py [输出目录]
+    默认输出到 ~/Downloads（会自动建各版本子目录）
 """
 from __future__ import annotations
 
@@ -160,47 +165,93 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
         "mods": mods,
         "_label": label,
         "_note": (
-            "原版伞：需先执行 tools/strip_umbrella.py 清理林可儿本体 pack "
-            "里已固化的洋伞条目，否则伞仍会是洋伞。"
+            "原版伞：导入后还需对「林可儿 Mod 3.0」点一次「重选选项」"
+            "（取消勾选 Umbrella Glider），否则洋伞仍在。"
             if not umbrella else ""
         ),
     }
 
 
+# 三个游戏本体版本的解包目录（用户提供；内容不同但 mod 集合一致）
+GAME_VERSIONS = ["1.6.0", "1.8.2", "1.9.0"]
+GAME_ROOT = (Path.home() / "Downloads" / "塞尔达传说 旷野之息"
+             / "MOD整合包")
+# 各版本解包目录（仅作存在性校验记录）
+GAME_UNPACK = {
+    "1.6.0": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包" / "1.6.0" / "1.6.0",
+    "1.8.2": (Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包" / "1.8.2"
+              / "The Legend of Zelda Breath of the Wild 1.8.2" / "APP+UPD"),
+    "1.9.0": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包" / "1.9.0" / "1.9.0",
+}
+
+# 已有的目录骨架：MOD整合包/<版本>/<包型>/<伞型>/<动作>/
+# 用户的 8 个维度正好落进这棵树：2 包型 × 2 伞型 × 2 动作 = 8 叶 × 3 版本 = 24
+PKG_ENHANCED = "增强包"
+PKG_PURE = "纯净包"
+UMB_YES = "伞形滑翔翼"
+UMB_NO = "默认滑翔翼"
+ANIM_YES = "有少女动作"
+ANIM_NO = "无少女动作"
+
+
+def _dest_dir(root: Path, game_ver: str, enhanced: bool,
+              umbrella: bool, anim: bool) -> Path:
+    """把 8 个维度映射到已有的目录骨架。"""
+    return (root / game_ver
+            / (PKG_ENHANCED if enhanced else PKG_PURE)
+            / (UMB_YES if umbrella else UMB_NO)
+            / (ANIM_YES if anim else ANIM_NO))
+
+
 def main() -> int:
-    outdir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / "Downloads"
-    outdir.mkdir(parents=True, exist_ok=True)
+    # 输出根目录：默认 MOD整合包\（沿用用户已有的目录骨架）
+    outroot = Path(sys.argv[1]) if len(sys.argv) > 1 else GAME_ROOT
+    dry = "--dry-run" in sys.argv
     installed = _scan()
 
-    made = []
-    for umbrella in (False, True):          # 原版伞 → 伞形伞
-        for anim in (True, False):          # 有 → 无
-            for enhanced in (False, True):  # 纯净版 → 增强版
-                doc = _build_one(installed, umbrella, anim, enhanced)
-                label = doc.pop("_label")
-                note = doc.pop("_note")
-                path = outdir / f"{label}.json"
+    total = 0
+    for game_ver in GAME_VERSIONS:
+        unpack = GAME_UNPACK.get(game_ver)
+        unpack_ok = "✓" if unpack and unpack.is_dir() else "?"
+        print(f"─── 游戏版本 {game_ver}  (解包 {unpack_ok}) ───")
+
+        made = []
+        for enhanced in (False, True):      # 纯净版 → 增强版
+            for umbrella in (False, True):  # 原版伞 → 伞形伞
+                for anim in (True, False):  # 有 → 无
+                    doc = _build_one(installed, umbrella, anim, enhanced)
+                    label = doc.pop("_label")
+                    note = doc.pop("_note")
+                    dest = _dest_dir(outroot, game_ver, enhanced, umbrella, anim)
+                    made.append((label, doc, note, dest, umbrella, anim, enhanced))
+                    total += 1
+
+        for label, doc, note, dest, umbrella, anim, enhanced in made:
+            on = [m for m in doc["mods"] if not m["disabled"]]
+            anim_m = next(m for m in doc["mods"] if m["dir"] == ANIM_DIR)
+            linkle = next(m for m in doc["mods"] if m["dir"] == LINKLE_DIR)
+            has_u = UMBRELLA in (linkle["options"]["selects"] or [])
+            pg = [s for s in (anim_m["options"]["selects"] or [])
+                  if s.startswith("Paraglider_")]
+            rel = dest.relative_to(outroot)
+            print(f"  ✓ {label}")
+            print(f"      → {rel}")
+            print(f"      启用 {len(on)}/{doc['modCount']}"
+                  f"  动作包{'启用' if not anim_m['disabled'] else '禁用'}"
+                  f"  第15组={pg[0] if pg else '—'}"
+                  f"  Umbrella={'开' if has_u else '关'}")
+            if note:
+                print(f"      ⚠ {note}")
+            if not dry:
+                dest.mkdir(parents=True, exist_ok=True)
+                path = dest / "配置.json"
                 path.write_text(
                     json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
-                made.append((label, doc, note, path))
+        print()
 
-    for label, doc, note, path in made:
-        on = [m for m in doc["mods"] if not m["disabled"]]
-        linkle = next(m for m in doc["mods"] if m["dir"] == LINKLE_DIR)
-        anim_m = next(m for m in doc["mods"] if m["dir"] == ANIM_DIR)
-        has_u = UMBRELLA in (linkle["options"]["selects"] or [])
-        pg = [s for s in (anim_m["options"]["selects"] or [])
-              if s.startswith("Paraglider_")]
-        print(f"✓ {label}")
-        print(f"    启用 {len(on)}/{doc['modCount']} 模组")
-        print(f"    少女动作包 {'启用' if not anim_m['disabled'] else '禁用'}"
-              f"   第15组={pg[0] if pg else '—'}")
-        print(f"    Umbrella Glider {'开' if has_u else '关'}")
-        if note:
-            print(f"    ⚠ {note}")
-    print()
-    print(f"输出目录：{outdir}")
+    print(f"共 {total} 个配置" + ("（dry-run，未写盘）" if dry else ""))
+    print(f"输出根目录：{outroot}")
     return 0
 
 
