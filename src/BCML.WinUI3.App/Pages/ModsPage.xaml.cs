@@ -476,10 +476,10 @@ public sealed partial class ModsPage : Page
         // 工具条是一整条 CommandBar，直接整条禁用。
         ToolBar.IsEnabled = !busy;
 
-        // 详情区操作条是 WrapPanel（继承自 Panel，而 Panel 没有 IsEnabled ——
+        // 详情区操作条是一个 Grid（继承自 Panel，而 Panel 没有 IsEnabled ——
         // IsEnabled 定义在 Control 上），所以逐个按钮设。
         // 这里遍历子元素而不是写死一堆名字：以后往条上加按钮不用回来补代码。
-        foreach (var child in ActionsWrap.Children)
+        foreach (var child in ActionsGrid.Children)
         {
             if (child is Control c) c.IsEnabled = !busy;
         }
@@ -540,11 +540,12 @@ public sealed partial class ModsPage : Page
 
         // 「选项」按钮只对带可选组件的 mod 显示（林可儿 / 少女动作包 这类）。
         // 这里用不带快照的轻量查询，结果按 mod 路径缓存，避免每次点选都问一次后端。
-        // 「重选选项」和「卸载」同排，所以这一排的显隐由这两个按钮共同决定：
-        // 没选中 mod 时整排消失；选中了但该 mod 没有可选组件，只剩卸载，让它独占整行。
+        //
+        // 没有可选组件时把「选项」藏掉，并让「卸载」**横跨两列**独占这一行 ——
+        // 否则它只占左半格，右边空一格，看起来像少了个按钮、排布没对齐。
         var hasOptions = _hasOptionsCache.TryGetValue(row?.Model.Path ?? "", out var known) && known;
         OptionsButton.Visibility = hasOptions ? Visibility.Visible : Visibility.Collapsed;
-        OptionsUninstallRow.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetColumnSpan(UninstallButton, hasOptions ? 1 : 2);
         if (has && !hasOptions && !_optionsProbePending.Contains(row!.Model.Path))
         {
             _ = ShowOptionsButtonIfAvailableAsync(row.Model.Path);
@@ -1586,48 +1587,81 @@ public sealed partial class ModsPage : Page
     {
         if (_services.Bcml is null) return;
 
-        var panel = new StackPanel { Spacing = 10, MinWidth = 480 };
+        // 用 Grid（单列 Width="*"）+ 每个子元素 HorizontalAlignment=Stretch，
+        // 让所有行**左右都对齐、并填满对话框可用宽度**。
+        //
+        // 原来用 StackPanel + MinWidth=480 有两个毛病：
+        //   · StackPanel 给子元素的宽度是"子元素自己期望的宽度"，所以
+        //     HorizontalAlignment=Stretch 的按钮也撑不满，右边缘参差不齐；
+        //   · MinWidth 只是"至少 480"，对话框比它宽时内容依然左对齐，
+        //     右侧空一大片 —— 用户看到的"卡片没有居中"就是这个。
+        // Grid 的星号列会真正把子元素拉到列宽，左右留白由对话框自己对称分配。
+        //
+        // MinWidth 依然要给（内容太窄时列表行会挤成一团），但它现在只决定
+        // **内容块本身的下限**；对话框比它宽时，多出来的宽度由内容撑满、
+        // 不再出现"内容贴左、右侧空一片"。
+        var panel = new Grid { MinWidth = 460, HorizontalAlignment = HorizontalAlignment.Stretch };
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // 往 panel 末尾追加一行。Grid 没有 StackPanel 那样的"自动依次排下去"，
+        // 所以每加一个子元素就补一个 Auto 行并把它放到最后一行 —— 这样
+        // HorizontalAlignment=Stretch 的子元素才会真正被列宽拉满。
+        void Append(FrameworkElement child, double topMargin = 0)
+        {
+            var row = panel.RowDefinitions.Count;
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            child.HorizontalAlignment = HorizontalAlignment.Stretch;
+            if (topMargin > 0) child.Margin = new Thickness(0, topMargin, 0, 0);
+            Grid.SetRow(child, row);
+            panel.Children.Add(child);
+        }
 
         // ==================== 一、完整备份 ====================
-        panel.Children.Add(new TextBlock
+        Append(new TextBlock
         {
             Text = Loc.T("backup.kindFull"),
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            Style = (Style)Application.Current.Resources["SectionHeaderTextStyle"],
         });
-        panel.Children.Add(new TextBlock
+        Append(new TextBlock
         {
             Text = Loc.T("backup.fullHint"),
             TextWrapping = TextWrapping.Wrap,
             Style = (Style)Application.Current.Resources["CaptionSecondaryTextStyle"],
-        });
+        }, topMargin: 4);
 
         var createFullBtn = new Button
         {
             Content = Loc.T("backup.createFull"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        panel.Children.Add(createFullBtn);
+        Append(createFullBtn, topMargin: 6);
 
-        var fullListPanel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(fullListPanel);
+        var fullListPanel = StackedRows();
+        Append(fullListPanel, topMargin: 8);
 
-        panel.Children.Add(Divider());
+        Append(Divider(), topMargin: 10);
 
         // ==================== 二、导出的备份文件（JSON）====================
-        panel.Children.Add(new TextBlock
+        Append(new TextBlock
         {
             Text = Loc.T("backup.kindList"),
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
-        });
-        panel.Children.Add(new TextBlock
+            Style = (Style)Application.Current.Resources["SectionHeaderTextStyle"],
+        }, topMargin: 8);
+        Append(new TextBlock
         {
             Text = Loc.T("backup.listHint"),
             TextWrapping = TextWrapping.Wrap,
             Style = (Style)Application.Current.Resources["CaptionSecondaryTextStyle"],
-        });
+        }, topMargin: 4);
 
-        var listListPanel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(listListPanel);
+        var listListPanel = StackedRows();
+        Append(listListPanel, topMargin: 8);
+
+        // 「导出 / 导入」并排等宽 —— 与上面操作条同一套 2 列节奏，
+        // 不再是两个各自撑满整行的长条（那样两行看着像两条横幅，也占了双倍高度）。
+        var ioRow = new Grid { ColumnSpacing = 6 };
+        ioRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        ioRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var exportBtn = new Button
         {
@@ -1639,26 +1673,18 @@ public sealed partial class ModsPage : Page
             Content = Loc.T("backup.importList"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        panel.Children.Add(exportBtn);
-        panel.Children.Add(importBtn);
+        Grid.SetColumn(exportBtn, 0);
+        Grid.SetColumn(importBtn, 1);
+        ioRow.Children.Add(exportBtn);
+        ioRow.Children.Add(importBtn);
+        Append(ioRow, topMargin: 8);
 
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = Loc.T("backup.centerTitle"),
-            // 内容右侧要让开滚动条：ScrollViewer 模板里的 ScrollContentPresenter 带
-            // Grid.ColumnSpan="2"，内容会横跨含滚动条那一列，滚动条就叠在列表行右边缘上。
-            // 调 ScrollViewer 的 Padding 没用，必须真正缩窄内容的可视宽度。
-            Content = new ScrollViewer
-            {
-                Content = new Grid
-                {
-                    Margin = new Thickness(0, 0, 20, 0),
-                    Children = { panel },
-                },
-                MaxHeight = DialogSizing.List,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            },
+            // 走统一的滚动宿主：它会为滚动条留出右侧空档（否则滚动条压在列表行上）。
+            Content = Dialogs.ScrollHost(panel, DialogSizing.List),
             CloseButtonText = Loc.T("common.cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
@@ -1671,17 +1697,18 @@ public sealed partial class ModsPage : Page
         void RebuildFull()
         {
             fullListPanel.Children.Clear();
+            fullListPanel.RowDefinitions.Clear();
             var records = BackupIndex.OfKind(BackupKind.Full);
 
             if (records.Count == 0)
             {
-                fullListPanel.Children.Add(Hint(Loc.T("backup.empty")));
+                AddRow(fullListPanel, Hint(Loc.T("backup.empty")));
                 return;
             }
 
             foreach (var rec in records)
             {
-                fullListPanel.Children.Add(RecordRow(
+                AddRow(fullListPanel, RecordRow(
                     rec,
                     meta: Loc.T("backup.modCount", rec.ModCount)
                           + (rec.Exists ? "  ·  " + Fmt(rec.SizeBytes) : "  ·  " + Loc.T("backup.missing")),
@@ -1713,17 +1740,18 @@ public sealed partial class ModsPage : Page
         void RebuildList()
         {
             listListPanel.Children.Clear();
+            listListPanel.RowDefinitions.Clear();
             var records = BackupIndex.OfKind(BackupKind.List);
 
             if (records.Count == 0)
             {
-                listListPanel.Children.Add(Hint(Loc.T("backup.empty")));
+                AddRow(listListPanel, Hint(Loc.T("backup.empty")));
                 return;
             }
 
             foreach (var rec in records)
             {
-                listListPanel.Children.Add(RecordRow(
+                AddRow(listListPanel, RecordRow(
                     rec,
                     meta: rec.Exists ? Fmt(rec.SizeBytes) : Loc.T("backup.missing"),
                     primaryText: Loc.T("backup.restoreFromList"),
@@ -1846,6 +1874,30 @@ public sealed partial class ModsPage : Page
         TextWrapping = TextWrapping.Wrap,
         Style = (Style)Application.Current.Resources["CaptionSecondaryTextStyle"],
     };
+
+    /// <summary>
+    /// 竖向排列、且子元素**会被拉满宽度**的容器（备份列表用）。
+    ///
+    /// 不能用 StackPanel：它给子元素的是"子元素期望的宽度"，所以里面的
+    /// <see cref="RecordRow"/> 这种带星号列的 Grid 撑不满，右边缘参差不齐 ——
+    /// 这正是"卡片没有对齐/居中"的来源。Grid 的星号列才会真正把子元素拉到列宽。
+    /// </summary>
+    private static Grid StackedRows(double spacing = 6)
+    {
+        var g = new Grid { RowSpacing = spacing, HorizontalAlignment = HorizontalAlignment.Stretch };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        return g;
+    }
+
+    /// <summary>按顺序加一行到 <see cref="StackedRows"/> 里。</summary>
+    private static void AddRow(Grid host, FrameworkElement child)
+    {
+        var row = host.RowDefinitions.Count;
+        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        child.HorizontalAlignment = HorizontalAlignment.Stretch;
+        Grid.SetRow(child, row);
+        host.Children.Add(child);
+    }
 
     /// <summary>字节数转成人看的单位。</summary>
     private static string Fmt(long bytes)

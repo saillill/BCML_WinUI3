@@ -36,8 +36,10 @@ internal static class Dialogs
     ///
     /// 外面再包一层 Grid 而不是直接改调用方传进来的元素：那样会**修改调用方的对象**，
     /// 弹出的对话框若被复用或调用方另有引用，会莫名其妙多出一个 Margin。
+    ///
+    /// 也对外暴露给自带 ContentDialog 的页面（如备份中心）复用，避免各写一份。
     /// </summary>
-    private static ScrollViewer ScrollHost(object content, double maxHeight)
+    internal static ScrollViewer ScrollHost(object content, double maxHeight)
     {
         var shell = new Grid { Margin = new Thickness(0, 0, ScrollBarGutter, 0) };
         shell.Children.Add(content as UIElement ?? new TextBlock { Text = content?.ToString() ?? "" });

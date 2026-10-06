@@ -1,0 +1,50 @@
+UI: 统一操作按钮宽度 / 区块标题分级 / 修复对话框居中与滚动条位置
+
+第八轮反馈，四处视觉问题：
+
+1. 「浏览 / 来源 / 更新」三个按钮宽度不一致
+   根因：WrapPanel 是把每个子元素按**自己的期望宽度**摆放的，所以
+   文字短的那个按钮就窄一截，几排之间没有任何对齐关系。
+   改法：删掉 WrapPanel，五个操作按钮统一放进一个 Grid ——
+   2 个星号列 × 3 行，全部 HorizontalAlignment=Stretch。
+   星号列会把每个格子拉到等宽，同一列里所有按钮因此天然对齐。
+   【重选选项 / 卸载】与上面三排共用同一套列节奏，宽度自然一致。
+
+2. 「可用操作」「内容描述」等区块标题看不出层级
+   根因：标题用的是 BodyStrongTextBlockStyle（14px SemiBold），
+   而正文也是 14px —— 只差一个字重，扫视时几乎分不出来。
+   改法：新增 SectionHeaderTextStyle（16px SemiBold +
+   TextFillColorPrimaryBrush），五个区块标题全部换过去：
+   模组信息 / 前置依赖 / 已关闭的合并器 / 内容描述 / 可用操作。
+   列表卡片里的那个 BodyStrong 保持不动（它在卡片内部，层级本来就不同）。
+
+3. 备份弹窗内容不居中、滚动条没贴右边
+   根因有两个，而且是独立的：
+   a) 居中：内容根是 StackPanel + MinWidth=480。对话框比 480 宽时，
+      StackPanel 仍然只占 480 并靠左，右侧空出一大片 ——
+      这就是"卡片没有居中"。换成 Grid（1 个星号列），
+      星号列会把内容真正拉到对话框宽度，左右留白由对话框对称分配。
+      MinWidth=460 保留，但它现在只作为内容块自身的下限。
+   b) 滚动条：WinUI 的 ScrollViewer 模板里 ScrollContentPresenter 带
+      Grid.ColumnSpan="2"，内容会**跑到滚动条那一列底下**，
+      所以调 ScrollViewer.Padding 是没用的（只会把内容推得离左边更远）。
+      必须在内容右侧留出等宽的空白：ScrollBarSize=16 + 边距 1，
+      统一预留 20px（Dialogs.ScrollBarGutter）。
+   c) 顺带把列表容器从 StackPanel 换成 Grid+星号列（StackedRows/AddRow）。
+      StackPanel 给子元素的是"期望宽度"，带星号列的记录行撑不满，
+      右边缘参差不齐 —— 这也是"没对齐"的一部分来源。
+
+4. 主窗口列表滚动条压住卡片
+   同样受 ColumnSpan=2 影响：滚动条叠在条目右边缘上。
+   改法：把整个 ListView 右缩 18px（= ScrollBarSize 16 + 余量），
+   ColumnSpacing 由 12 收到 6，滚动条正好落在
+   「列表与详情栏之间的缝隙」里，既不再压卡片，
+   视觉上也像那条缝本来就是给滚动条留的。
+
+验证：
+- dotnet build 0 error（仅剩既有 MVVMTK0045 警告）
+- tools/check_loc.py 463/463 对称
+- tools/test_sidecar.py 27 tests OK
+- tools/build_release.py 通过，产物 120.0 MB
+- 关键标记已在 BCML-WinUI3.pri 中确认（XAML 资源只认 .pri，
+  查 .dll 是查不到的）

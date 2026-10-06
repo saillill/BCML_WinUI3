@@ -18,6 +18,28 @@
             </Style>
 
             <!--
+                详情区的**区块标题**（模组信息 / 内容描述 / 可用操作 / 前置依赖 …）。
+
+                为什么不直接用 BodyStrongTextBlockStyle：那是 14px 半粗，和正文
+                （RichTextBlock，LineHeight 20）**同号**，只靠一点点字重差区分，
+                一屏文字堆下来标题完全"沉"进正文里，扫读时找不到段落边界。
+
+                这里让它比正文明显高一档：
+                  · 字号 16（正文 14）—— 拉开字号差，这是最有效的层次信号；
+                  · 字重 SemiBold 保留；
+                  · 下边距 2 —— 让标题与它统领的内容之间**比**与上一段之间更近，
+                    视觉上形成"标题贴着自己的内容"的分组感（格式塔的接近性原则）。
+                颜色不写死，跟随主题前景色。
+            -->
+            <Style x:Key="SectionHeaderTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Margin" Value="0,0,0,2" />
+            </Style>
+
+            <!--
                 紧凑图标按钮（保留给仍需纯图标的地方）。
                 WinUI 的 Button 默认 MinWidth=120、Padding=12,6 —— 图标按钮条排不进
                 470px 的详情栏。这里压成 40×40 的方块，图标居中，文字交给 ToolTip。
