@@ -1,0 +1,25 @@
+Backup center: drop duplicated BCML profiles section; reserve scrollbar gutter
+
+The "BCML 自带的配置档案" block listed the same thing as the "完整备份" section
+above it (a full copy of mods_nx, ~600 MB each), so two entries described the
+same concept and it was unclear which one to use. Remove the whole block along
+with its now-unused strings (463/463 symmetric).
+
+Scrollbar overlap fix — root cause is in WinUI's ScrollViewer template:
+
+    Grid                     col0 = '*'  (content)
+      ScrollContentPresenter  Grid.ColumnSpan="2"  Margin = Padding
+      Grid  Grid.Column="1"   Auto  (scrollbar column)
+        ScrollBar  HorizontalAlignment="Right"
+
+The presenter spans BOTH columns, so the content runs underneath the scrollbar
+column. Tuning ScrollViewer.Padding cannot help: it only insets the content
+inside that full-width area, leaving the content's right edge under the
+scrollbar. The fix is to actually narrow the content's visible width with a
+right inset.
+
+WinUI's ScrollBarSize is 16px (plus 1 for ScrollViewerScrollBarMargin), so 20 is
+used. Applied to the ModsPage detail pane, ToolsPage, SettingsPage, both dialog
+scroll hosts in Dialogs.cs, and the backup center. SetupWizardPage already sizes
+its content host to ViewportWidth (which excludes the scrollbar), so it was left
+as is.

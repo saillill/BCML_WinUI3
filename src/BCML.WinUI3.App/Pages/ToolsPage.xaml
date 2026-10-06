@@ -39,8 +39,12 @@
 
         <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
 
+        <!-- ScrollViewer 的内容横跨「含滚动条那一列」的整个宽度（模板里
+             ScrollContentPresenter 带 Grid.ColumnSpan="2"），所以卡片会顶到
+             滚动条底下、看起来被压住。只能给内容留右侧 Margin 让开滚动条；
+             WinUI 的 ScrollBarSize 是 16px，这里留 20 足够。 -->
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="18" MaxWidth="1080" HorizontalAlignment="Left" Padding="0,0,0,20">
+            <StackPanel Spacing="18" MaxWidth="1080" HorizontalAlignment="Left" Padding="0,0,20,20">
 
                 <!-- ==================== BNP 平台转换 ==================== -->
                 <TextBlock x:Name="SecConvert" Text="BNP 平台转换" Style="{StaticResource BodyStrongTextBlockStyle}" />

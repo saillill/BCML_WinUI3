@@ -20,6 +20,37 @@ namespace BCML.WinUI3.App.Services;
 internal static class Dialogs
 {
     /// <summary>
+    /// 滚动条要让开的宽度。WinUI 的 <c>ScrollBarSize</c> 是 16px
+    /// （<c>ScrollViewerScrollBarMargin</c> 再加 1），留 20 有富余。
+    /// </summary>
+    private const double ScrollBarGutter = 20;
+
+    /// <summary>
+    /// 给 ContentDialog 的内容套一层带高度上限的滚动容器，并为右侧滚动条留出位置。
+    ///
+    /// **为什么要留位置。** ScrollViewer 的默认模板里，<c>ScrollContentPresenter</c>
+    /// 带 <c>Grid.ColumnSpan="2"</c> —— 内容横跨「含滚动条那一列」的整个宽度，
+    /// 于是滚动条是**叠在内容右边缘上**的。调 ScrollViewer 自己的 Padding 解决不了
+    /// （它只把内容整体缩一圈，右边缘照样顶在滚动条底下）。要让开，只能真正缩窄
+    /// 内容的可视宽度，也就是给内容加右侧 Margin。
+    ///
+    /// 外面再包一层 Grid 而不是直接改调用方传进来的元素：那样会**修改调用方的对象**，
+    /// 弹出的对话框若被复用或调用方另有引用，会莫名其妙多出一个 Margin。
+    /// </summary>
+    private static ScrollViewer ScrollHost(object content, double maxHeight)
+    {
+        var shell = new Grid { Margin = new Thickness(0, 0, ScrollBarGutter, 0) };
+        shell.Children.Add(content as UIElement ?? new TextBlock { Text = content?.ToString() ?? "" });
+
+        return new ScrollViewer
+        {
+            Content = shell,
+            MaxHeight = maxHeight,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+    }
+
+    /// <summary>
     /// 标准确认弹窗：返回用户是否点了主按钮（Primary）。
     ///
     /// <paramref name="primaryIsDefault"/> 为 false 时把默认焦点放在「取消」上，
@@ -39,7 +70,7 @@ internal static class Dialogs
         double maxContentHeight = 0)
     {
         object finalContent = maxContentHeight > 0
-            ? new ScrollViewer { Content = content, MaxHeight = maxContentHeight }
+            ? ScrollHost(content, maxContentHeight)
             : content;
 
         var dialog = new ContentDialog
@@ -72,7 +103,7 @@ internal static class Dialogs
         {
             XamlRoot = xamlRoot,
             Title = title,
-            Content = new ScrollViewer { Content = content, MaxHeight = maxHeight },
+            Content = ScrollHost(content, maxHeight),
             CloseButtonText = closeText,
             DefaultButton = ContentDialogButton.Close,
         };

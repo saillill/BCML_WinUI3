@@ -302,8 +302,25 @@
                 BorderThickness="1"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerFillColorDefaultBrush}">
-                <ScrollViewer Padding="14">
-                    <StackPanel Spacing="12">
+                <!--
+                    右侧留白必须**大于**滚动条宽度，否则卡片会铺到容器最右边、
+                    被滚动条压住。
+
+                    原因是 ScrollViewer 的默认模板长这样（见 WinUI generic.xaml）：
+                        <Grid>                                   ← 第 0 列 '*'，第 1 列 'Auto'（滚动条）
+                          <ScrollContentPresenter Margin="{TemplateBinding Padding}"
+                                                  Grid.ColumnSpan="2" />   ← 内容横跨两列！
+                          <Grid Grid.Column="1"> <ScrollBar HorizontalAlignment="Right" /> </Grid>
+                        </Grid>
+                    内容 `ColumnSpan=2`，即它**铺满含滚动条那一列的整个宽度**，而 Padding
+                    只是在内部再缩一圈 —— 所以无论 Padding 给多大，卡片右边缘都顶在
+                    滚动条底下。要让开滚动条，只能给内容一个右侧 Margin（它会把
+                    ScrollContentPresenter 的可视宽度压窄），左右两项配合：
+                      · 左 14 / 上 14 —— 常规内边距；
+                      · 右 20 —— 大于滚动条宽度（约 12px）+ 一点呼吸空间。
+                -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="12" Margin="14,14,20,14">
 
                         <Border
                             x:Name="DetailCoverBox"

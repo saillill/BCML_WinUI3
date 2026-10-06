@@ -33,8 +33,11 @@
 
         <muxc:InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
 
-        <ScrollViewer Grid.Row="2">
-            <StackPanel Spacing="14" MaxWidth="1020" HorizontalAlignment="Left">
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <!-- ScrollViewer 的内容横跨「含滚动条那一列」的整个宽度（模板里
+                 ScrollContentPresenter 带 Grid.ColumnSpan="2"），卡片会顶到滚动条
+                 底下。右侧留 20 让开滚动条（WinUI 的 ScrollBarSize = 16px）。 -->
+            <StackPanel Spacing="14" MaxWidth="1020" HorizontalAlignment="Left" Padding="0,0,20,0">
 
                 <!-- ============================ 游戏路径 ============================ -->
                 <TextBlock x:Name="SecGame" Text="游戏路径" Style="{StaticResource BodyStrongTextBlockStyle}" />

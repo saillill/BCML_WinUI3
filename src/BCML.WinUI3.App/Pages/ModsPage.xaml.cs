@@ -1642,43 +1642,23 @@ public sealed partial class ModsPage : Page
         panel.Children.Add(exportBtn);
         panel.Children.Add(importBtn);
 
-        panel.Children.Add(Divider());
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = Loc.T("mods.profilesSection"),
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
-        });
-        panel.Children.Add(new TextBlock
-        {
-            Text = Loc.T("mods.profilesHint"),
-            TextWrapping = TextWrapping.Wrap,
-            Style = (Style)Application.Current.Resources["CaptionSecondaryTextStyle"],
-        });
-
-        var profiles = new List<Core.Models.ProfileInfo>();
-        var current = await SafeAsync(() => _services.Bcml.GetProfilesAsync());
-        var currentProfile = await SafeAsync(() => _services.Bcml.GetCurrentProfileAsync());
-        profiles.AddRange(current ?? new List<Core.Models.ProfileInfo>());
-        panel.Children.Add(new TextBlock
-        {
-            Text = Loc.T("mods.currentProfile", currentProfile?.Name ?? Loc.T("common.none")),
-        });
-
-        var nameBox = new TextBox { PlaceholderText = Loc.T("mods.newProfilePlaceholder") };
-        panel.Children.Add(nameBox);
-
-        var saveBtn = new Button { Content = Loc.T("mods.saveAsProfile") };
-        panel.Children.Add(saveBtn);
-
-        var listPanel = new StackPanel { Spacing = 4 };
-        panel.Children.Add(listPanel);
-
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = Loc.T("backup.centerTitle"),
-            Content = new ScrollViewer { Content = panel, MaxHeight = DialogSizing.List },
+            // 内容右侧要让开滚动条：ScrollViewer 模板里的 ScrollContentPresenter 带
+            // Grid.ColumnSpan="2"，内容会横跨含滚动条那一列，滚动条就叠在列表行右边缘上。
+            // 调 ScrollViewer 的 Padding 没用，必须真正缩窄内容的可视宽度。
+            Content = new ScrollViewer
+            {
+                Content = new Grid
+                {
+                    Margin = new Thickness(0, 0, 20, 0),
+                    Children = { panel },
+                },
+                MaxHeight = DialogSizing.List,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            },
             CloseButtonText = Loc.T("common.cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
@@ -1766,62 +1746,12 @@ public sealed partial class ModsPage : Page
             }
         }
 
-        // ---------------- BCML 自带的配置档案（保留原有能力）----------------
-
-        void Rebuild()
-        {
-            listPanel.Children.Clear();
-            if (profiles.Count == 0)
-            {
-                listPanel.Children.Add(new TextBlock
-                {
-                    Text = Loc.T("mods.profilesEmpty"),
-                    Style = (Style)Application.Current.Resources["CaptionSecondaryTextStyle"],
-                });
-                return;
-            }
-            foreach (var p in profiles)
-            {
-                var rowGrid = new Grid { ColumnSpacing = 6 };
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                var label = new TextBlock { Text = p.Name, VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(label, 0);
-
-                var load = new Button { Content = Loc.T("mods.loadAction") };
-                Grid.SetColumn(load, 1);
-                load.Click += async (_, _) =>
-                {
-                    dialog.Hide();
-                    await RunAsync("正在加载配置", p.Name + "\n会替换当前全部模组设置并重新合并。",
-                        () => _services.Bcml!.SetProfileAsync(p.Name));
-                    await LoadAsync();
-                };
-
-                var del = new Button { Content = Loc.T("common.delete") };
-                Grid.SetColumn(del, 2);
-                del.Click += async (_, _) =>
-                {
-                    try
-                    {
-                        await _services.Bcml!.DeleteProfileAsync(p.Name);
-                        profiles.Remove(p);
-                        Rebuild();
-                    }
-                    catch (Exception ex) { await ShowError(Loc.T("mods.errDeleteConfig"), ex); }
-                };
-
-                rowGrid.Children.Add(label);
-                rowGrid.Children.Add(load);
-                rowGrid.Children.Add(del);
-                listPanel.Children.Add(rowGrid);
-            }
-        }
+        // ---------------- 构建列表 ----------------
+        // 注：原先这里还有一块「BCML 自带的配置档案」，和上面的「完整备份」是同一件事
+        // （都是整个 mods_nx 的完整拷贝，各约 600 MB），两个入口列两遍同样的东西反而让人
+        // 分不清该点哪个，所以整块移除，只保留「完整备份」这一个入口。
         RebuildFull();
         RebuildList();
-        Rebuild();
 
         // 新建完整备份：问一个名字，然后交给 BCML 打包整个 mods_nx
         createFullBtn.Click += async (_, _) =>
@@ -1897,20 +1827,6 @@ public sealed partial class ModsPage : Page
         {
             dialog.Hide();
             await ImportModListFromFileAsync();
-        };
-        saveBtn.Click += async (_, _) =>
-        {
-            var nm = nameBox.Text?.Trim();
-            if (string.IsNullOrEmpty(nm)) return;
-            try
-            {
-                await _services.Bcml!.SaveProfileAsync(nm);
-                profiles.Clear();
-                profiles.AddRange(await _services.Bcml.GetProfilesAsync());
-                Rebuild();
-                nameBox.Text = "";
-            }
-            catch (Exception ex) { await ShowError(Loc.T("mods.errSaveConfig"), ex); }
         };
 
         await dialog.ShowAsync();
