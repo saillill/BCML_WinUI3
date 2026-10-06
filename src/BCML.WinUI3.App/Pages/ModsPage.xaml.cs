@@ -541,10 +541,15 @@ public sealed partial class ModsPage : Page
         // 「选项」按钮只对带可选组件的 mod 显示（林可儿 / 少女动作包 这类）。
         // 这里用不带快照的轻量查询，结果按 mod 路径缓存，避免每次点选都问一次后端。
         //
-        // 没有可选组件时把「选项」藏掉，并让「卸载」**横跨两列**独占这一行 ——
-        // 否则它只占左半格，右边空一格，看起来像少了个按钮、排布没对齐。
+        // 没有可选组件时把「重选选项」藏掉，并让「卸载」**横跨两列**补上它那一格 ——
+        // 网格是 3 列，「卸载」本来在 col2；若让它往前挪到 col1 再跨 2 列，
+        // 就正好盖住 col1+col2，这一行仍然填满，不会右边空一格。
+        //
+        // 注意必须先复位 Column，否则上一次选中「有选项」的模组时留下的
+        // SetColumn(UninstallButton, 1) 会一直生效，卸载按钮会赖在中间那格。
         var hasOptions = _hasOptionsCache.TryGetValue(row?.Model.Path ?? "", out var known) && known;
         OptionsButton.Visibility = hasOptions ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetColumn(UninstallButton, hasOptions ? 2 : 1);
         Grid.SetColumnSpan(UninstallButton, hasOptions ? 1 : 2);
         if (has && !hasOptions && !_optionsProbePending.Contains(row!.Model.Path))
         {

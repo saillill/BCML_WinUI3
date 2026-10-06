@@ -426,15 +426,25 @@
                         </StackPanel>
 
                         <!--
-                            可用操作：图标 + 文字按钮，**全部**排成一个 2 列栅格。
+                            可用操作：图标 + 文字按钮，排成一个 3 列 × 2 行栅格。
 
                             为什么不再用 WrapPanel：WrapPanel 里每个按钮宽度由自己的文字
-                            决定（「浏览」两字窄、「重新处理」四字宽），一排排下来宽窄参差；
-                            而下面那排「重选选项 / 卸载」是等分整行的，两排宽度对不上，
-                            看着像没对齐。改成 2 列 `*` 之后：
-                              · 同一排的按钮天然等宽；
-                              · 上下两排的按钮左右边界也对齐（共用同一套列定义）；
-                              · 放不下时不用折行 —— 按钮文字短，2 列在这个宽度里够用。
+                            决定（「浏览」两字窄、「重新处理」四字宽），一排排下来宽窄参差，
+                            看着像没对齐。改成 3 列 `*` 之后：
+                              · 六格等宽，同一排的按钮天然同宽；
+                              · 上下两排的按钮左右边界也对齐（共用同一套列定义）。
+
+                            为什么是 3 列而不是 2 列：用户要求「浏览 / 来源 / 更新」在同一行。
+                            这排本来是排在最前的三个按钮，占两列就必然折成「浏览+来源」/
+                            「更新+重新处理」这样错位的组合，语义上也被切断了。
+
+                            行序（按使用频率，把只读/查看类和会改磁盘的分开）：
+                              第 1 行：浏览 · 来源 · 更新
+                              第 2 行：重新处理 · 重选选项 · 卸载
+                            第 2 行三个都会**改动磁盘上的模组本体**（重新处理重跑安装、
+                            重选选项重写 options/、卸载直接删掉模组目录），
+                            所以放一起，卸载再单独用红色区分。
+                            加载中 / 无选中时由代码整段隐藏。
 
                             按钮统一 HorizontalAlignment=Stretch 让它们真正撑满各自列
                             （Button 默认 Left，不 Stretch 的话列宽是 * 也白搭）。
@@ -445,9 +455,9 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
@@ -470,8 +480,7 @@
                                         <TextBlock x:Name="UrlButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-
-                                <Button x:Name="UpdateButton" Grid.Row="1" Grid.Column="0"
+                                <Button x:Name="UpdateButton" Grid.Row="0" Grid.Column="2"
                                         Click="Update_Click"
                                         HorizontalAlignment="Stretch"
                                         Style="{StaticResource ActionTextButtonStyle}">
@@ -480,7 +489,8 @@
                                         <TextBlock x:Name="UpdateButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="ReprocessButton" Grid.Row="1" Grid.Column="1"
+
+                                <Button x:Name="ReprocessButton" Grid.Row="1" Grid.Column="0"
                                         Click="Reprocess_Click"
                                         HorizontalAlignment="Stretch"
                                         Style="{StaticResource ActionTextButtonStyle}">
@@ -489,12 +499,7 @@
                                         <TextBlock x:Name="ReprocessButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-
-                                <!-- 「重选选项」+「卸载」：这两个会**改动磁盘上的模组本体**
-                                     （前者重写 options/，后者直接删掉模组目录），
-                                     放在最后一排、同样是等分两列，与上面几排对齐。
-                                     加载中 / 无选中时由代码整排隐藏。 -->
-                                <Button x:Name="OptionsButton" Grid.Row="2" Grid.Column="0"
+                                <Button x:Name="OptionsButton" Grid.Row="1" Grid.Column="1"
                                         Click="Options_Click"
                                         HorizontalAlignment="Stretch"
                                         Style="{StaticResource ActionTextButtonStyle}">
@@ -504,7 +509,7 @@
                                     </StackPanel>
                                 </Button>
                                 <!-- 卸载是破坏性操作（删除模组目录且不可撤销），用红色以示区别 -->
-                                <Button x:Name="UninstallButton" Grid.Row="2" Grid.Column="1"
+                                <Button x:Name="UninstallButton" Grid.Row="1" Grid.Column="2"
                                         Click="Uninstall_Click"
                                         HorizontalAlignment="Stretch"
                                         Style="{StaticResource DangerTextButtonStyle}">
