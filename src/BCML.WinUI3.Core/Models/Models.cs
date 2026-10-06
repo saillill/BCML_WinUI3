@@ -160,7 +160,13 @@ public sealed class ModOptionItem
     /// <summary>当前是否选中。</summary>
     [JsonPropertyName("selected")] public bool Selected { get; set; }
 
-    /// <summary>这个变体在当前 mod 里是否真的存在（不存在就不该被勾）。</summary>
+    /// <summary>
+    /// 这个变体现在能不能被选中。
+    ///
+    /// 不是「磁盘上有没有这个目录」—— BCML 安装时会把没选中的变体删掉，
+    /// 所以磁盘只剩当前这一套；只要快照（从原始 bnp 解出来的那份）里有它，
+    /// 就可以重新选回来。真的两者都没有（快照降级过、又找不到原始 bnp）才会是 false。
+    /// </summary>
     [JsonPropertyName("exists")] public bool Exists { get; set; }
 
     [JsonPropertyName("default")] public bool Default { get; set; }
@@ -193,6 +199,13 @@ public sealed class ModOptionsInfo
 
     /// <summary>所有可用变体（含上一轮被取消、但快照里还留着的）。</summary>
     [JsonPropertyName("available")] public List<string> Available { get; set; } = new();
+
+    /// <summary>
+    /// info.json 里定义过、但既没在磁盘也没进快照的变体 —— 多半是原始 bnp 找不到了。
+    /// 这些选项在对话框里要显示成"不可选"并说明原因，而不是干脆不显示
+    /// （不显示的话用户会以为这个 mod 本来就没有那一项）。
+    /// </summary>
+    [JsonPropertyName("unavailable")] public List<string> Unavailable { get; set; } = new();
 }
 
 /// <summary>Compare Mods：单个合并器分组的差异。</summary>

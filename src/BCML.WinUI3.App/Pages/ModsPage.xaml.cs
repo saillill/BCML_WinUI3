@@ -62,6 +62,13 @@ public sealed partial class ModRow : ObservableObject
     /// <summary>拖拽手柄是否显示 —— 由页面上的「排序手柄」开关统一下发。</summary>
     [ObservableProperty] private Visibility _handleVisibility = Visibility.Collapsed;
 
+    /// <summary>
+    /// 卡片上的上移/下移按钮是否显示 —— 与抓手同源，只有排序模式打开时才出现。
+    /// 单独一个属性而不是复用 HandleVisibility：模板里两个控件各自 x:Bind，
+    /// 语义分开，将来若要单独控制也不用改绑定。
+    /// </summary>
+    [ObservableProperty] private Visibility _moveButtonsVisibility = Visibility.Collapsed;
+
     public bool NotBusy => !IsBusy;
 
     public Visibility DisabledBadgeVisibility => Enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -139,17 +146,11 @@ public sealed partial class ModsPage : Page
     /// <summary>正在加载详情的那个模组路径 —— 避免同一行重复发起。</summary>
     private string? _detailsLoadingPath;
 
-    /// <summary>详情拉取失败的模组（用来把「读取失败」和「本来就没改动」区分开）。</summary>
-    private readonly HashSet<string> _detailsFailed = new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>重新合并的兜底超时。串行池下实测只要几秒，给 10 分钟已经很宽松。</summary>
     private static readonly TimeSpan RemergeTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>上一次渲染的模组路径，用来判断「选中项真的换了」。</summary>
     private string? _lastDetailPath;
-
-    /// <summary>改动明细里单个合并器最多列多少行（防止一个合并器几万个文件把界面拖死）。</summary>
-    private const int EditsPreviewLimit = 300;
 
     public ObservableCollection<ModRow> Rows { get; } = new();
 
@@ -204,23 +205,27 @@ public sealed partial class ModsPage : Page
         NoSelectionHint.Text = Loc.T("mods.noSelection");
         InfoSectionTitle.Text = Loc.T("mods.infoTitle");
         DependsSectionTitle.Text = Loc.T("mods.dependsTitle");
-        OptionsSectionTitle.Text = Loc.T("mods.optionsTitle");
         DisabledMergersSectionTitle.Text = Loc.T("mods.disabledMergersTitle");
         DescSectionTitle.Text = Loc.T("mods.descTitle");
-        ChangesSectionTitle.Text = Loc.T("mods.changesTitle");
-        EditsSectionTitle.Text = Loc.T("mods.editsTitle");
         ActionsSectionTitle.Text = Loc.T("mods.actionsTitle");
 
-        LabelIconButton(ExploreButton, Loc.T("mods.explore"), Loc.T("mods.exploreHint"));
-        LabelIconButton(UrlButton, Loc.T("mods.source"));
-        LabelIconButton(UpdateButton, Loc.T("mods.update"), Loc.T("mods.updateHint"));
-        LabelIconButton(UpButton, Loc.T("mods.moveUp"), Loc.T("mods.moveUpHint"));
-        LabelIconButton(DownButton, Loc.T("mods.moveDown"), Loc.T("mods.moveDownHint"));
-        LabelIconButton(ReprocessButton, Loc.T("mods.reprocess"));
-        LabelIconButton(OptionsButton, Loc.T("modOptions.tip"));
-        LabelIconButton(UninstallButton, Loc.T("mods.uninstall"));
+        // 「可用操作」的按钮都带文字，所以这里同时写 TextBlock.Text（可见文字）和
+        // A11y 名 + ToolTip（悬浮与读屏）。两处都取自同一份 Loc，切换语言时一起变。
+        ExploreButtonText.Text = Loc.T("mods.explore");
+        UrlButtonText.Text = Loc.T("mods.source");
+        UpdateButtonText.Text = Loc.T("mods.update");
+        ReprocessButtonText.Text = Loc.T("mods.reprocess");
+        OptionsButtonText.Text = Loc.T("modOptions.tip");
+        UninstallButtonText.Text = Loc.T("mods.uninstall");
 
-        UpdateDetails();   // 启用/禁用按钮的文字与图标要在语言切换后一起刷新
+        LabelTextButton(ExploreButton, ExploreButtonText, Loc.T("mods.exploreHint"));
+        LabelTextButton(UrlButton, UrlButtonText, null);
+        LabelTextButton(UpdateButton, UpdateButtonText, Loc.T("mods.updateHint"));
+        LabelTextButton(ReprocessButton, ReprocessButtonText, null);
+        LabelTextButton(OptionsButton, OptionsButtonText, null);
+        LabelTextButton(UninstallButton, UninstallButtonText, null);
+
+        UpdateDetails();   // 徽标 / 按钮可用状态在语言切换后也要跟着刷新
     }
 
     // ------------------------------------------------------------------ 载入
@@ -290,9 +295,8 @@ public sealed partial class ModsPage : Page
             {
                 _suppressEnabledAction = false;
             }
-            // 列表重读过，之前缓存的详情（版本/改动清单）可能已经过期
+            // 列表重读过，之前缓存的详情（版本/元数据）可能已经过期
             _detailsCache.Clear();
-            _detailsFailed.Clear();
             _lastDetailPath = null;
             _detailsLoadingPath = null;
             SyncVisible();
@@ -456,6 +460,17 @@ public sealed partial class ModsPage : Page
         ToolTipService.SetToolTip(button, hint is null ? name : name + " —— " + hint);
     }
 
+    /// <summary>
+    /// 「图标 + 文字」按钮：文字已经在 <paramref name="text"/> 里显示出来了，
+    /// 这里只需补 A11y 名和可选的 ToolTip（悬浮时给一句更长的说明）。
+    /// 名字取文字本身 —— 保证读屏念出来的和眼睛看到的一致。
+    /// </summary>
+    private static void LabelTextButton(Button button, TextBlock text, string? hint)
+    {
+        AutomationProperties.SetName(button, text.Text);
+        ToolTipService.SetToolTip(button, string.IsNullOrEmpty(hint) ? text.Text : hint);
+    }
+
     private void SetBusyUi(bool busy)
     {
         // 工具条是一整条 CommandBar，直接整条禁用。
@@ -480,7 +495,6 @@ public sealed partial class ModsPage : Page
         var row = CurrentRow;
         var has = row is not null;
         var hasDesc = has && !string.IsNullOrWhiteSpace(row!.Description);
-        var hasChanges = has && row!.Changes.Count > 0;
         var hasUrl = has && !string.IsNullOrWhiteSpace(row!.Url);
 
         ShowCover(row);
@@ -489,28 +503,22 @@ public sealed partial class ModsPage : Page
         DetailDisabledOverlayText.Text = Loc.T("mods.disabledBadge");
         DetailDisabledOverlay.Visibility = has && !row!.Enabled ? Visibility.Visible : Visibility.Collapsed;
 
-        // 没有选中模组时，下面整块内容区都不出现（用户要求：不要显示
-        // 「内容描述（该模组没有提供描述）」「涉及改动」这类空壳），只留一句引导。
+        // 没有选中模组时，下面整块内容区都不出现，只留一句引导。
         NoSelectionHint.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
         DescSection.Visibility = hasDesc ? Visibility.Visible : Visibility.Collapsed;
-        ChangesSection.Visibility = hasChanges ? Visibility.Visible : Visibility.Collapsed;
         ActionsSection.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         DetailNotice.IsOpen = false;
 
         if (row is null)
         {
             MarkdownLite.Render(DetailDesc, null);
-            DetailChanges.Children.Clear();
         }
         else
         {
-            // 路径不单独占一行，改挂在「文件夹」按钮的提示里
+            // 路径不单独占一行，改挂在「打开文件夹」按钮的提示里
             ToolTipService.SetToolTip(ExploreButton, row.Model.Path);
 
             MarkdownLite.Render(DetailDesc, row.Description);
-
-            DetailChanges.Children.Clear();
-            foreach (var c in row.Changes) DetailChanges.Children.Add(MakeChip(c));
         }
 
         // ---- 详情区（徽标 / 信息表 / 依赖 / 选项 / 改动明细）
@@ -538,23 +546,10 @@ public sealed partial class ModsPage : Page
             _ = ShowOptionsButtonIfAvailableAsync(row!.Model.Path);
         }
 
-        ToggleEnabledButton.IsEnabled = has && !row!.IsBusy;
-        // ✓ = 当前生效，点它去禁用；✕ 反过来。图标与提示文字始终一起翻转。
-        ToggleEnabledIcon.Glyph = has && row!.Enabled ? "\uE711" : "\uE8FB";
-        ToolTipService.SetToolTip(ToggleEnabledButton, has && row!.Enabled
-            ? Loc.T("mods.disable") + " —— " + Loc.T("mods.disableHint")
-            : Loc.T("mods.enable"));
-        AutomationProperties.SetName(ToggleEnabledButton,
-            has && row!.Enabled ? Loc.T("mods.disable") : Loc.T("mods.enable"));
-
         UpdateButton.IsEnabled = has && !row!.IsBusy;
         ReprocessButton.IsEnabled = has && row!.Processed && !row.IsBusy;
         ReprocessButton.Visibility = has && row!.Processed ? Visibility.Visible : Visibility.Collapsed;
         UninstallButton.IsEnabled = has && !row!.IsBusy;
-
-        var idx = row is null ? -1 : Rows.IndexOf(row);
-        UpButton.IsEnabled = idx > 0;
-        DownButton.IsEnabled = idx >= 0 && idx < Rows.Count - 1;
     }
 
     /// <summary>
@@ -578,12 +573,9 @@ public sealed partial class ModsPage : Page
         }
         catch (Exception ex)
         {
-            // 详情拉不到不算致命：封面/描述还在，改动明细显示成「读取失败」即可
+            // 详情拉不到不算致命：封面/描述还在，只是信息表里的版本/依赖会缺
             AppServices.Diag($"详情加载失败 [{row.Name}] {ex}");
-            // 记成"失败"而不是塞一个空的 ModDetailsResult：
-            // 塞空结果的话，界面会显示成「没有可统计的改动」，等于把一次读取失败
-            // 伪装成「这个模组本来就没改动」—— 用户会据此做出错误判断。
-            _detailsFailed.Add(path);
+            // 不缓存失败：下次切回这一行会重新问一次后端
         }
         finally
         {
@@ -599,25 +591,21 @@ public sealed partial class ModsPage : Page
         });
     }
 
-    /// <summary>渲染详情区的徽标、信息表、依赖、选项与改动明细（纯读缓存，不做 IO）。</summary>
+    /// <summary>渲染详情区的徽标、信息表与依赖（纯读缓存，不做 IO）。</summary>
     private void RenderDetailSections(ModRow? row)
     {
         DetailBadges.Children.Clear();
         InfoGrid.Children.Clear();
         InfoGrid.RowDefinitions.Clear();
         DependsWrap.Children.Clear();
-        OptionsWrap.Children.Clear();
         DisabledMergersWrap.Children.Clear();
-        EditsList.Children.Clear();
 
         if (row is null)
         {
             DetailBadges.Visibility = Visibility.Collapsed;
             InfoSection.Visibility = Visibility.Collapsed;
             DependsSection.Visibility = Visibility.Collapsed;
-            OptionsSection.Visibility = Visibility.Collapsed;
             DisabledMergersSection.Visibility = Visibility.Collapsed;
-            EditsSection.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -653,84 +641,10 @@ public sealed partial class ModsPage : Page
         foreach (var d in depends) DependsWrap.Children.Add(MakeChip(d));
         DependsSection.Visibility = depends.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        // ---- 已启用选项 / 已关闭的合并器
-        var options = meta?.OptionFolders ?? new List<string>();
-        foreach (var o in options) OptionsWrap.Children.Add(MakeChip(o));
-        OptionsSection.Visibility = options.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
+        // ---- 已关闭的合并器
         var offMergers = meta?.DisabledMergers ?? new List<string>();
         foreach (var m in offMergers) DisabledMergersWrap.Children.Add(MakeChip(m, danger: true));
         DisabledMergersSection.Visibility = offMergers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        // ---- 改动明细（懒加载 + 分组折叠）
-        EditsSection.Visibility = Visibility.Visible;
-        if (details is null)
-        {
-            if (_detailsFailed.Contains(row.Model.Path))
-            {
-                // 读取失败 ≠ 没有改动，必须分开说
-                EditsSummary.Text = Loc.T("mods.editsFailed");
-                EditsBusy.IsActive = false;
-                EditsBusy.Visibility = Visibility.Collapsed;
-                return;
-            }
-            EditsSummary.Text = Loc.T("mods.editsLoading");
-            EditsBusy.IsActive = true;
-            EditsBusy.Visibility = Visibility.Visible;
-            return;
-        }
-
-        EditsBusy.IsActive = false;
-        EditsBusy.Visibility = Visibility.Collapsed;
-
-        if (details.Edits.Count == 0)
-        {
-            EditsSummary.Text = Loc.T("mods.editsEmpty");
-            return;
-        }
-
-        EditsSummary.Text = Loc.T("mods.editsSummary", details.Total, details.Edits.Count);
-        foreach (var g in details.Edits) EditsList.Children.Add(MakeEditsExpander(g));
-    }
-
-    /// <summary>一个合并器分组 → 可折叠面板，内容是等宽字体的文件清单。</summary>
-    private static Expander MakeEditsExpander(ModEditGroup g)
-    {
-        var shown = g.Files.Count > EditsPreviewLimit
-            ? g.Files.Take(EditsPreviewLimit).ToList()
-            : g.Files;
-
-        var text = string.Join("\n", shown);
-        if (g.Files.Count > EditsPreviewLimit)
-        {
-            text += "\n" + Loc.T("mods.editsMore", g.Files.Count - EditsPreviewLimit);
-        }
-
-        var body = new TextBlock
-        {
-            Text = text,
-            FontFamily = new FontFamily("Consolas"),
-            FontSize = 11,
-            TextWrapping = TextWrapping.NoWrap,
-            IsTextSelectionEnabled = true,
-        };
-
-        var scroll = new ScrollViewer
-        {
-            Content = body,
-            MaxHeight = DialogSizing.Code,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Padding = new Thickness(0, 4, 0, 0),
-        };
-
-        return new Expander
-        {
-            Header = g.Header,
-            Content = scroll,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-        };
     }
 
     /// <summary>信息表的一行：左标签（定宽）+ 右值（可换行、可选中）。</summary>
@@ -872,7 +786,6 @@ public sealed partial class ModsPage : Page
         row.RenameTo(newPath);
 
         if (_detailsCache.Remove(old, out var cached)) _detailsCache[newPath] = cached;
-        if (_detailsFailed.Remove(old)) _detailsFailed.Add(newPath);
         if (_hasOptionsCache.Remove(old, out var hasOptions)) _hasOptionsCache[newPath] = hasOptions;
         if (string.Equals(_lastDetailPath, old, StringComparison.OrdinalIgnoreCase)) _lastDetailPath = newPath;
     }
@@ -922,13 +835,18 @@ public sealed partial class ModsPage : Page
         }
     }
 
-    private async Task MoveSelectedAsync(int delta)
+    /// <summary>
+    /// 把某一行在可见列表里上/下移一格并落盘。
+    ///
+    /// 按**行**而不是按「当前选中行」—— 卡片上的上移/下移直接把自己那一行传进来，
+    /// 不用先把列表选中项切过去（那样会顺带重画详情栏、还容易误操作别的行）。
+    /// </summary>
+    private async Task MoveRowAsync(ModRow row, int delta)
     {
-        var row = CurrentRow;
-        if (row is null) return;
         var index = Rows.IndexOf(row);
+        if (index < 0) return;
         var target = index + delta;
-        if (index < 0 || target < 0 || target >= Rows.Count) return;
+        if (target < 0 || target >= Rows.Count) return;      // 到顶/到底就不动
 
         Rows.Move(index, target);
 
@@ -938,6 +856,10 @@ public sealed partial class ModsPage : Page
         ApplyVisibleOrderToAllRows();
 
         await PersistOrderAsync();
+
+        // 移动后行容器很可能被 ListView 回收复用，把这一行重新选上，
+        // 免得详情栏停在别的模组上（用户点的是卡片，注意力还在这一行）。
+        if (Rows.Contains(row)) ModList.SelectedItem = row;
     }
 
     /// <summary>
@@ -959,9 +881,17 @@ public sealed partial class ModsPage : Page
     }
 
     // ------------------------------------------------------------------ 详情操作
-    private async void Up_Click(object sender, RoutedEventArgs e) => await MoveSelectedAsync(-1);
+    /// <summary>卡片上的上移（Tag 挂的是 ModRow 本身）。</summary>
+    private async void RowUp_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ModRow row) await MoveRowAsync(row, -1);
+    }
 
-    private async void Down_Click(object sender, RoutedEventArgs e) => await MoveSelectedAsync(+1);
+    /// <summary>卡片上的下移（Tag 挂的是 ModRow 本身）。</summary>
+    private async void RowDown_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is ModRow row) await MoveRowAsync(row, +1);
+    }
 
     private void Explore_Click(object sender, RoutedEventArgs e)
     {
@@ -1212,34 +1142,6 @@ public sealed partial class ModsPage : Page
         }
     }
 
-    /// <summary>详情面板里的「启用 / 禁用」按钮（原版的 enable / disable）。</summary>
-    private async void ToggleEnabled_Click(object sender, RoutedEventArgs e)
-    {
-        var row = CurrentRow;
-        if (row is null) return;
-        var target = !row.Enabled;
-
-        row.IsBusy = true;
-        UpdateDetails();
-        try
-        {
-            var ok = await RunAsync(target ? Loc.T("mods.enabling") : Loc.T("mods.disabling"), row.Name,
-                () => _services.Bcml!.ModActionAsync(row.Model, target ? "enable" : "disable"),
-                fullBusy: false);
-            if (!ok) return;                 // 后端没接受，本地状态保持不动
-            // 走带抑制标记的写法：直接写 Model.Disabled + RefreshFromModel 会改到 Enabled，
-            // 从而触发 OnRowPropertyChanged，把这同一个操作又发一遍给后端。
-            SetEnabledSilently(row, target);
-            // 列表过滤掉已禁用项时，禁用后该行应当立刻消失
-            if (!target) SyncVisible();
-        }
-        finally
-        {
-            row.IsBusy = false;
-            UpdateDetails();
-        }
-    }
-
     /// <summary>详情面板里的「更新」：选一个新 bnp 原地替换（原版的 update）。</summary>
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
@@ -1332,7 +1234,11 @@ public sealed partial class ModsPage : Page
         ModList.AllowDrop = on;
         ModList.ReorderMode = on ? ListViewReorderMode.Enabled : ListViewReorderMode.Disabled;
         var vis = on ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var r in _allRows) r.HandleVisibility = vis;
+        foreach (var r in _allRows)
+        {
+            r.HandleVisibility = vis;
+            r.MoveButtonsVisibility = vis;
+        }
     }
 
     /// <summary>

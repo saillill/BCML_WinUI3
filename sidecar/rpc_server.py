@@ -1275,54 +1275,287 @@ def _snapshot_dir(mod: Path) -> tuple:
     return root, root / "state.json"
 
 
-def _ensure_snapshot(mod: Path) -> dict:
-    """确保存在 options/ 的原始快照；返回状态字典。
+def _tokens_for_match(text: str) -> set:
+    """把名字切成可比较的词元（都转小写、丢掉纯数字和单字符）。
 
-    需要重建的两种情况：
-      · 快照不存在（第一次重选）；
-      · 当前 options/ 里出现了快照里没有的目录 —— 说明 mod 被重装/更新过，
-        旧快照已经过时，继续用会把新变体弄丢。
+    要能对上 "少女动作包脚步声修正版GirlyAnimationPack10.6Fixed"
+    ↔ "girly_animation_pack_10_6_footstepsound_fixed" 这种
+    「中文显示名 + 拼音化英文」的差异，所以先按 camelCase / 数字边界拆词。
+    """
+    import re as _re
+
+    s = _re.sub(r"([a-z])([A-Z])", r"\1 \2", text)   # camelCase 拆开
+    s = _re.sub(r"(\D)(\d)", r"\1 \2", s)            # 字母/数字边界
+    s = _re.sub(r"(\d)(\D)", r"\1 \2", s)
+    toks = _re.split(r"[^a-z0-9]+", s.lower())
+    return {t for t in toks if len(t) >= 2 and not t.isdigit()}
+
+
+def _match_score(a: str, b: str) -> float:
+    """两个名字的词元重叠度（0~1）。"""
+    ta, tb = _tokens_for_match(a), _tokens_for_match(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / max(len(ta), len(tb))
+
+
+def _find_source_archive(mod: Path) -> "Path | None":
+    """回头找回这个 mod 的原始 bnp。
+
+    BCML 安装模组时（install.py:377-380）会把没选中的 options/* 变体删掉，
+    磁盘上的 mod 目录里找不回它们了；唯一还留着全量变体的地方就是**原始 bnp**。
+
+    mod 目录名和 bnp 文件名往往对不上（前者常是中文显示名，后者是英文原文件名），
+    所以用**词元重叠度**打分挑最像的那个，而不是简单子串匹配。
+    只有分数过线（>=0.6）才认，宁可不匹配也不要拿错 bnp 去解包 ——
+    解错会把别的 mod 的文件灌进 options/，比"换不了"严重得多。
+
+    找不到就返回 None —— 调用方据此走降级路径（只列磁盘现存变体），不会报错。
+    """
+    import os as _os
+
+    # 目录名形如 "0117_少女动作包脚步声修正版GirlyAnimationPack10.6Fixed"，
+    # 去掉开头的优先级编号再比
+    raw = mod.name
+    keyword = raw.split("_", 1)[1] if "_" in raw else raw
+
+    roots = [
+        Path(_os.environ.get("USERPROFILE") or _os.path.expanduser("~")) / "Downloads",
+        Path(_os.environ.get("USERPROFILE") or _os.path.expanduser("~")) / "Desktop",
+        Path(_os.environ.get("LOCALAPPDATA") or "") / "BCML-WinUI3" / "sources",
+    ]
+
+    best, best_score = None, 0.0
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for p in root.rglob("*.bnp"):
+            # 汉化包（_CN）里也带全量 options，但体积/内容可能被改过；
+            # 原版优先，所以对 _CN 结果扣一点分。
+            sc = _match_score(keyword, p.stem)
+            if p.stem.lower().endswith("_cn"):
+                sc -= 0.05
+            if sc > best_score:
+                best, best_score = p, sc
+
+    if best is None or best_score < 0.6:
+        return None
+    return best
+
+
+def _populate_from_archive(mod: Path, archive: Path, pristine: Path) -> int:
+    """把原始 bnp 里 options/ 的全量变体解到 pristine，返回变体目录数。
+
+    **产出布局固定为 `pristine/options/<变体>/...`** —— 与 mod 目录一致，
+    这样 `_option_folders(pristine)` 和 `_copy_tree_linked` 都能直接复用。
+
+    用 BCML 自己的 7z（`install.get_7z_path()`）解包，避免依赖外部 PATH。
+
+    两个坑（实测踩过）：
+      · bnp 内部的路径分隔符是**反斜杠**（`options\\Battle_Girly\\...`），
+        7z 的包含过滤器 `options/*` 匹配不上，会一个文件都不解 → 必须解全量；
+      · 不要加 `-bsp1`：某些 7z 版本会把进度写进 stdout，与 capture 同用会让
+        解包提前中止（实测：加 -bsp1 → 0 个目录；不加 → 75 个）。
+    """
+    import subprocess as _sp
+
+    _rmtree_robust(pristine)
+    pristine.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from bcml.install import get_7z_path as _g7z     # type: ignore
+        seven = _g7z()
+    except Exception as exc:                             # noqa: BLE001
+        _log_append(f"[modOptions] 找不到 7z，无法从 bnp 恢复变体：{exc}")
+        return 0
+    if not seven:
+        return 0
+
+    kwargs = _child_kwargs()
+    args = [str(seven), "x", str(archive), f"-o{pristine}", "-y"]
+    proc = _sp.run(args, stdout=_sp.PIPE, stderr=_sp.PIPE,
+                   creationflags=kwargs.get("creationflags", 0), check=False)
+
+    if not (pristine / "options").is_dir():
+        _log_append(
+            f"[modOptions] 从 {archive.name} 解包后没有 options/ 目录"
+            f"（7z 退出码 {proc.returncode}）："
+            f"{proc.stderr.decode('utf-8', 'replace')[:200]}")
+        return 0
+
+    # 7z 把整个归档都解开了，把无关的顶层（01007EF00011E000 / logs / info.json …）
+    # 清掉，只留 options/ —— 快照只需要变体本身，多留一份 romfs 白占几百 MB。
+    for entry in list(pristine.iterdir()):
+        if entry.name != "options":
+            if entry.is_dir():
+                _rmtree_robust(entry)
+            else:
+                try:
+                    entry.unlink()
+                except OSError:
+                    pass
+
+    return len(_option_folders(pristine))
+
+
+def _snapshot_options_dir(mod: Path) -> Path:
+    """快照里存放变体的目录（**永远是 `pristine/options/`**）。
+
+    统一布局是这次修复的关键之一：老版本建快照时是平的 `pristine/<变体>/`，
+    新版本要求 `pristine/options/<变体>/`。集中在这个函数里返回，
+    再配一个 `_repair_snapshot_layout()`，就不会出现"读的地方一套、写的地方另一套"。
+    """
+    return _snapshot_dir(mod)[0] / "pristine" / "options"
+
+
+def _repair_snapshot_layout(mod: Path) -> bool:
+    """把老版平的快照 `pristine/<变体>/` 迁成 `pristine/options/<变体>/`。
+
+    返回 True 表示确实改了（调用方据此知道 state 需要重写）。
+    迁移失败（比如 pristine 根本不存在）返回 False，不抛异常 ——
+    调用方随后会因为"快照不完整"走重建路径，结果一样是对的。
+    """
+    snap = _snapshot_dir(mod)[0]
+    pristine = snap / "pristine"
+    if not pristine.is_dir():
+        return False
+    if (pristine / "options").is_dir():
+        return False                      # 已经是新布局
+    # 平布局：pristine 下的目录本身就是变体
+    variants = [d for d in pristine.iterdir() if d.is_dir()]
+    if not variants:
+        return False
+    target = pristine / "options"
+    target.mkdir(parents=True, exist_ok=True)
+    moved = 0
+    for d in variants:
+        dest = target / d.name
+        if not dest.exists():
+            try:
+                d.rename(dest)
+                moved += 1
+            except OSError:
+                pass
+    if moved:
+        _log_append(f"[modOptions] 已迁移 {mod.name} 的旧版快照布局"
+                    f"（{moved} 个变体 → pristine/options/）")
+    return moved > 0
+
+
+def _ensure_snapshot(mod: Path) -> dict:
+    """确保存在 options/ 的**全量**快照；返回状态字典。
+
+    为什么快照必须来自原始 bnp 而不是当前磁盘：
+
+        BCML 装模组时会删掉没选中的变体目录。如果在这里 `_copy_tree_linked(mod/"options")`，
+        拿到的就是"已经被剪过一遍"的残留（实测：少女动作包定义 72 项、磁盘只剩 18 项），
+        快照等于没起作用，用户永远换不回那 54 个被删的变体。
+
+    因此优先级：
+      1. 已经有完整快照（folders 覆盖 info.json 里的全部定义）→ 直接用；
+      2. 能找到原始 bnp → 解出全量 options/ 建快照；
+      3. 都做不到 → 退回用磁盘现存目录建快照，并在 state 里记 degraded=True
+         （`mod_options` 会据此把缺失项标成不可用，`apply_mod_options` 也会明确报错）。
     """
     snap, state_path = _snapshot_dir(mod)
     pristine = snap / "pristine"
-    current = set(_option_folders(mod))
+    # 老的平布局先迁到 pristine/options/，免得后面到处判两种布局
+    _repair_snapshot_layout(mod)
+    options_root = _snapshot_options_dir(mod)
+
     state = _read_json(state_path, {})
     if not isinstance(state, dict):
         state = {}
-
     snap_folders = set(state.get("folders") or [])
-    stale = (
-        not pristine.is_dir()
-        or state.get("modPath") != str(mod)
-        or bool(current - snap_folders)
-    )
 
-    if stale:
-        _rmtree_robust(pristine)
-        pristine.mkdir(parents=True, exist_ok=True)
-        src_options = mod / "options"
-        count = _copy_tree_linked(src_options, pristine) if src_options.is_dir() else 0
-        state = {
-            "modPath": str(mod),
-            "folders": sorted(current),
-            "files": count,
-            "takenAt": datetime.datetime.now().isoformat(timespec="seconds"),
+    defined = _option_definition(mod)
+    defined_folders = {
+        (i.get("folder") or "") for i in defined["multi"] if isinstance(i, dict)
+    }
+    for grp in defined["single"]:
+        if not isinstance(grp, dict):
+            continue
+        defined_folders |= {
+            (s.get("folder") or "")
+            for s in (grp.get("options") or []) if isinstance(s, dict)
         }
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-        _log_append(f"[modOptions] 已为 {mod.name} 建立选项目录快照（{count} 个文件）")
+    defined_folders.discard("")
 
+    current = set(_option_folders(mod))
+
+    # 已有快照是否"够用"：必须覆盖 info.json 定义的全部 folder，
+    # 且 mod 目录没被换过（modPath 对得上）
+    complete = (
+        options_root.is_dir()
+        and state.get("modPath") == str(mod)
+        and defined_folders.issubset(snap_folders)
+        and not (current - snap_folders)
+    )
+    if complete:
+        return state
+
+    # 快照不够用 → 重建
+    archive = _find_source_archive(mod)
+    count = 0
+    degraded = True
+    if archive is not None:
+        count = _populate_from_archive(mod, archive, pristine)
+        if count and defined_folders.issubset(
+                set(_option_folders(_snapshot_options_dir(mod)))):
+            degraded = False
+
+    if degraded:
+        # 找不到 bnp 或解不出全量 —— 至少把磁盘现存的存下来，
+        # 这样"重选"仍然可用（只是换不了被删掉的那些）。
+        # 同样保持 pristine/options/<变体> 的布局。
+        _rmtree_robust(pristine)
+        (pristine / "options").mkdir(parents=True, exist_ok=True)
+        src_options = mod / "options"
+        count = (_copy_tree_linked(src_options, pristine / "options")
+                 if src_options.is_dir() else 0)
+
+    state = {
+        "modPath": str(mod),
+        "folders": sorted(_option_folders(pristine / "options")),
+        "files": count,
+        "degraded": degraded,
+        "sourceArchive": str(archive) if archive is not None else "",
+        "takenAt": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    how = "原始 bnp " + archive.name if not degraded and archive else "磁盘现存目录"
+    _log_append(
+        f"[modOptions] 已为 {mod.name} 建立选项目录快照："
+        f"{len(state['folders'])} 个变体 / {count} 个文件（来源：{how}"
+        + ("，降级：定义中的部分变体已无法恢复）" if degraded else "）")
+    )
     return state
 
 
 def mod_options(params) -> dict:
     """读一个 mod 的选项定义 + 当前选择，供界面画「重选选项」对话框。
 
-    `snapshot=False`（默认）时不碰快照，只读当前状态 —— 详情面板每次切换模组都会问一句
-    "这个 mod 有没有可选项"，那时候不该去建快照（会复制几万个文件）。
-    真正打开对话框时传 `snapshot=True`，才会把原始变体列表补全，
-    这样上一轮取消掉的变体也能重新选回来。
+    **选项清单以 info.json 的定义为准，而不是磁盘上还剩哪些目录。**
+    原因（这条踩过坑，务必别再改回按磁盘枚举）：
+
+        BCML 安装模组时（install.py:377-380）会把 mod/options/ 下**没被选中的**
+        变体目录直接 shutil.rmtree 掉。所以磁盘上 options/ 只剩下"当前这一套选择"。
+        如果按磁盘枚举，用户打开"重选选项"就只看得到自己已经选过的那些项，
+        根本换不了 —— 正是要修的那个 bug。
+
+    好在 info.json 里 definition 是完整的（multi + single 全部 72 项都在），
+    拿它当清单就能把被删掉的变体重新列出来。
+
+    返回的每一项带三种状态：
+      · `exists`    —— 目录现在就在磁盘上（能直接重建）；
+      · `restorable`—— 定义里有、但目录已被 BCML 删掉，需要重新解包原始 bnp 才拿得回来；
+      · `selected`  —— 属于当前 options.json 记录的这一套选择。
+
+    `snapshot=True` 时额外建/读一份 options/ 的原始快照（第一次重选时建），
+    用来保证 `apply_mod_options` 重建时不会残留旧选择的文件。
     """
     _require_bcml()
     mod = Path((params or {}).get("mod") or "")
@@ -1335,9 +1568,12 @@ def mod_options(params) -> dict:
 
     if want_snapshot:
         snap_state = _ensure_snapshot(mod)
-        selectable = set(snap_state.get("folders") or []) or available
+        snapshot_folders = set(snap_state.get("folders") or [])
     else:
-        selectable = available
+        snapshot_folders = set()
+
+    # 可作为重建来源的目录 = 磁盘现存 ∪ 快照里有的
+    restorable_pool = available | snapshot_folders
 
     current = set(_read_options_json(mod).get("selects") or [])
     if not current:
@@ -1349,7 +1585,7 @@ def mod_options(params) -> dict:
             "name": item.get("name") or folder,
             "desc": item.get("desc") or "",
             "folder": folder,
-            "exists": folder in selectable,
+            "exists": folder in restorable_pool,
             "selected": folder in current,
             "default": bool(item.get("default", False)),
             "groupName": group_name or "",
@@ -1377,6 +1613,19 @@ def mod_options(params) -> dict:
         })
 
     info = _read_json(mod / "info.json", {})
+    all_defined = {
+        (item.get("folder") or "")
+        for item in defined["multi"] if isinstance(item, dict)
+    }
+    for grp in defined["single"]:
+        if not isinstance(grp, dict):
+            continue
+        all_defined |= {
+            (sub.get("folder") or "")
+            for sub in (grp.get("options") or []) if isinstance(sub, dict)
+        }
+    all_defined.discard("")
+
     return {
         "mod": str(mod),
         "name": (info.get("name") if isinstance(info, dict) else None) or mod.name,
@@ -1384,7 +1633,9 @@ def mod_options(params) -> dict:
         "multi": multi,
         "single": single,
         "selected": sorted(current),
-        "available": sorted(selectable),
+        "available": sorted(restorable_pool),
+        # 定义里出现、但既不在磁盘也没进快照的 —— 界面用来提示"需要重装原始 bnp"
+        "unavailable": sorted(all_defined - restorable_pool),
     }
 
 
@@ -1404,28 +1655,58 @@ def apply_mod_options(params) -> dict:
 
     state = _ensure_snapshot(mod)
     snap_folders = set(state.get("folders") or [])
+    on_disk = set(_option_folders(mod))
 
     wanted = {str(s) for s in selects}
-    unknown = sorted(wanted - snap_folders)
-    if unknown:
-        # 不认识的名字直接拒绝，别静默忽略 —— 否则用户以为选了其实没选上
-        raise ValueError("这些选项不属于该模组：" + ", ".join(unknown))
 
-    pristine = _snapshot_dir(mod)[0] / "pristine"
+    # 能从快照或磁盘重建出来的那些；剩下的说明目录已被 BCML 安装时删掉，
+    # 而快照又是在删除之后才建的（= 拿不回来），必须明确报错而不是静默跳过，
+    # 否则用户以为换成了、其实 options.json 里只写了一半。
+    resolvable = snap_folders | on_disk
+    unknown = sorted(wanted - resolvable)
+    if unknown:
+        raise ValueError(
+            "这些选项已经不在磁盘上、也无法从快照恢复："
+            + ", ".join(unknown)
+            + "（多半是安装时被 BCML 删掉了；请重新解包原始 bnp 安装该模组后再选）"
+        )
+
+    # 快照的布局是 pristine/options/<变体>/……，
+    # 统一走 _snapshot_options_dir() 取，别再各处手拼路径。
+    pristine = _snapshot_options_dir(mod)
     options_dir = mod / "options"
 
-    # 1) 整棵删掉，确保旧选择不可能残留
-    _rmtree_robust(options_dir)
-    options_dir.mkdir(parents=True, exist_ok=True)
+    # 1) 先把选中的变体从快照取到一个临时暂存区 —— **先取后删**，
+    #    避免"删完才发现快照缺文件"这种把 options/ 弄成半残的局面。
+    staging = _snapshot_dir(mod)[0] / f"staging-{os.getpid()}"
+    _rmtree_robust(staging)
+    staging.mkdir(parents=True, exist_ok=True)
 
-    # 2) 只把选中的变体从快照重建出来
     applied = []
+    missing_source = []
     for folder in sorted(wanted):
         src = pristine / folder
-        if not src.is_dir():
-            continue
-        _copy_tree_linked(src, options_dir / folder)
-        applied.append(folder)
+        if src.is_dir():
+            _copy_tree_linked(src, staging / folder)
+            applied.append(folder)
+        else:
+            missing_source.append(folder)
+
+    if missing_source:
+        _rmtree_robust(staging)
+        raise ValueError(
+            "快照里没有这些选项的文件：" + ", ".join(missing_source)
+            + "（快照可能是在这些目录被删除之后才建立的；请重装原始 bnp）"
+        )
+
+    # 2) 暂存齐了，现在才整棵替换 options/（先删干净，旧选择不可能残留）
+    _rmtree_robust(options_dir)
+    options_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for folder in applied:
+            _copy_tree_linked(staging / folder, options_dir / folder)
+    finally:
+        _rmtree_robust(staging)
 
     # 3) 记账：options.json 里同时保留 BCML 自己的 disable/options 字段
     data = _read_options_json(mod)
@@ -1435,11 +1716,11 @@ def apply_mod_options(params) -> dict:
     _write_json_atomic(mod / "options.json", data)
 
     _log_append(f"[modOptions] {mod.name}：应用 {len(applied)} 个选项"
-                f"（共 {len(snap_folders)} 个可选）")
+                f"（快照共 {len(snap_folders)} 个可选）")
     return {
         "mod": str(mod),
         "applied": applied,
-        "available": sorted(snap_folders),
+        "available": sorted(snap_folders | on_disk),
     }
 
 

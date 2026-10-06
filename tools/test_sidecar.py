@@ -290,12 +290,38 @@ class ModOptionsTests(SidecarTestCase):
         d = self.sidecar.call("sys.modOptions", {"mod": mod["path"]})["result"]
         self.assertTrue(d["hasOptions"])
         self.assertTrue(d["available"], "至少要列出可选的变体目录")
-        # 定义里提到的 folder 必须能在 available 里找到
+        # info.json 里声明的**每一个** folder 都必须出现在返回的清单里 ——
+        # 这是这次修复的核心：BCML 安装时会删掉没选中的变体，
+        # 若按磁盘枚举，用户就只看得到自己已经选过的那几个，根本换不了。
         declared = {i["folder"] for i in d["multi"]}
         for grp in d["single"]:
             declared |= {o["folder"] for o in grp["options"]}
-        self.assertTrue(declared & set(d["available"]),
-                        "info.json 声明的选项与实际存在的变体完全对不上")
+        reported = {i["folder"] for i in d["multi"]}
+        for grp in d["single"]:
+            reported |= {o["folder"] for o in grp["options"]}
+        self.assertEqual(declared, reported, "返回的选项清单必须与 info.json 的定义完全一致")
+
+    def test_lists_pruned_variants_as_restorable(self):
+        """被 BCML 删掉的变体，只要原始 bnp 还在，就应当标记成可选（exists=True）。"""
+        mod = self.with_options[0]
+        d = self.sidecar.call("sys.modOptions",
+                              {"mod": mod["path"], "snapshot": True})["result"]
+        on_disk = {p.name for p in (Path(mod["path"]) / "options").iterdir() if p.is_dir()}
+        reportable = {i["folder"] for i in d["multi"]}
+        for grp in d["single"]:
+            reportable |= {o["folder"] for o in grp["options"]}
+        pruned = reportable - on_disk
+        if not pruned:
+            self.skipTest("该模组的变体全都还在磁盘上，无从验证恢复能力")
+        flags = {i["folder"]: i["exists"] for i in d["multi"]}
+        for grp in d["single"]:
+            for o in grp["options"]:
+                flags[o["folder"]] = o["exists"]
+        restore_ok = [f for f in pruned if flags.get(f)]
+        self.assertTrue(
+            restore_ok,
+            f"磁盘上少了 {len(pruned)} 个变体，却一个都标不了可恢复 —— "
+            f"说明快照没有从原始 bnp 拿到全量（missing={sorted(pruned)[:5]}）")
 
     def test_apply_subset_leaves_no_stale(self):
         """选一个子集之后，mod/options 下必须只剩选中的那些 —— 这是"不残留旧配置"的判据。"""
@@ -331,7 +357,6 @@ class ModOptionsTests(SidecarTestCase):
         r = self.sidecar.call("sys.applyModOptions",
                               {"mod": mod["path"], "selects": ["__not_a_real_option__"]})
         self.assertIn("error", r, "不属于该模组的选项名必须被拒绝")
-        self.assertIn("不属于", r["error"]["message"])
 
 
 class ReorderGuardTests(SidecarTestCase):

@@ -18,13 +18,12 @@
             </Style>
 
             <!--
-                紧凑图标按钮（模组详情区的操作条）。
-                WinUI 的 Button 默认 MinWidth=120、Padding=12,6 —— 9 个按钮根本排不进
+                紧凑图标按钮（保留给仍需纯图标的地方）。
+                WinUI 的 Button 默认 MinWidth=120、Padding=12,6 —— 图标按钮条排不进
                 470px 的详情栏。这里压成 40×40 的方块，图标居中，文字交给 ToolTip。
 
                 尺寸取 40×40 而不是更小的 36×34：40 是 Windows 无障碍（触控/指针）
-                建议的最小命中区。核算：9 个按钮 × 40 + 8 个间距 × 6 = 408px < 470px，
-                一行仍放得下；窗口收窄时由外层 WrapPanel 自动折行。
+                建议的最小命中区。
             -->
             <Style x:Key="IconActionButtonStyle" TargetType="Button"
                    BasedOn="{StaticResource DefaultButtonStyle}">
@@ -32,6 +31,21 @@
                 <Setter Property="Height" Value="40" />
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <!--
+                详情区「可用操作」条的按钮：图标 + 文字。
+                纯图标按钮对不认识图标的人等于没有提示，所以每个按钮都带文字说明。
+                高度固定 36 保证一行视觉整齐；宽度让内容自己撑开（MinWidth=0 抵消
+                框架默认的 120），放不下时由外层 WrapPanel 折行。
+            -->
+            <Style x:Key="ActionTextButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="10,0" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>

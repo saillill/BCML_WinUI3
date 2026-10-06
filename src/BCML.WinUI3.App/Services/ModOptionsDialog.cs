@@ -43,8 +43,12 @@ public static class ModOptionsDialog
         // ---- 单选组：每组一个 RadioButtons
         foreach (var group in info.Single)
         {
+            // 不再按 Exists 过滤！BCML 安装时会把没选中的变体从磁盘删掉，
+            // 只看 Exists 的话用户就只看得到"当前已经选过的那几个"，根本换不了。
+            // 后端现在按 info.json 的定义返回全量清单，并标好哪些是可恢复的。
             var usable = group.Options.Where(o => o.Exists).ToList();
-            if (usable.Count == 0) continue;
+            var broken = group.Options.Where(o => !o.Exists).ToList();
+            if (usable.Count == 0 && broken.Count == 0) continue;
 
             var section = new StackPanel { Spacing = 6 };
             section.Children.Add(new TextBlock
@@ -76,13 +80,16 @@ public static class ModOptionsDialog
                 radios.Items.Add(radio);
                 singleRadios.Add((opt.Folder, radio));
             }
+            // 拿不回来的变体也列出来，但禁用 —— 让用户知道"这里本来有这一项"
+            foreach (var opt in broken) radios.Items.Add(BuildUnavailableRow(opt));
             section.Children.Add(radios);
             panel.Children.Add(section);
         }
 
         // ---- 多选项：一堆复选框
         var multiUsable = info.Multi.Where(o => o.Exists).ToList();
-        if (multiUsable.Count > 0)
+        var multiBroken = info.Multi.Where(o => !o.Exists).ToList();
+        if (multiUsable.Count > 0 || multiBroken.Count > 0)
         {
             var section = new StackPanel { Spacing = 6 };
             section.Children.Add(new TextBlock
@@ -101,6 +108,7 @@ public static class ModOptionsDialog
                 section.Children.Add(box);
                 multiChecks.Add((opt.Folder, box));
             }
+            foreach (var opt in multiBroken) section.Children.Add(BuildUnavailableRow(opt));
             panel.Children.Add(section);
         }
 
@@ -162,5 +170,40 @@ public static class ModOptionsDialog
             });
         }
         return stack;
+    }
+
+    /// <summary>
+    /// 「已不可用」的选项行：显示成灰色、不可勾选，并注明原因。
+    ///
+    /// 为什么要显示而不是直接藏起来：这一项在 info.json 里确实存在，
+    /// 只是原始 bnp 找不到了、解不出来。藏起来的话用户会以为"这 mod 本来就没这选项"，
+    /// 而不是"我这边丢文件了、需要重装"—— 前者会让人一直等一个永远不会出现的按钮。
+    /// </summary>
+    private static UIElement BuildUnavailableRow(ModOptionItem opt)
+    {
+        var stack = new StackPanel { Spacing = 2, Margin = new Thickness(0, 2, 0, 2) };
+        stack.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(opt.Name) ? opt.Folder : opt.Name,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorDisabledBrush"],
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = Loc.T("modOptions.unavailable"),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorDisabledBrush"],
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        });
+
+        // 用 IsHitTestVisible=false 而不是 IsEnabled=false：后者在某些主题下
+        // 会给整行加一层不透明底色，看起来像"选中了"。这里只要不能点就行。
+        return new Border
+        {
+            Child = stack,
+            Padding = new Thickness(8, 2, 8, 2),
+            IsHitTestVisible = false,
+            Opacity = 0.6,
+        };
     }
 }

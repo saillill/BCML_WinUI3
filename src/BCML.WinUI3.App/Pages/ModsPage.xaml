@@ -176,6 +176,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
                                 <!-- 拖拽手柄：只有打开「排序模式」后才出现。
@@ -239,6 +240,36 @@
                                 </StackPanel>
 
                                 <!--
+                                    上移 / 下移：只在「排序模式」打开时出现（MoveButtonsVisibility 由
+                                    ModsPage.ApplyHandles 统一下发），位置在启用开关左边。
+                                    这里不做按钮内文字 —— 卡片窄，图标 + ToolTip/A11y 名足够；
+                                    点击后按**本行**在该方向上的相邻行交换，不依赖当前选中项。
+                                -->
+                                <StackPanel
+                                    Grid.Column="4"
+                                    Orientation="Horizontal"
+                                    Spacing="2"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind MoveButtonsVisibility, Mode=OneWay}">
+                                    <Button
+                                        Click="RowUp_Click"
+                                        Tag="{x:Bind}"
+                                        Style="{StaticResource IconActionButtonStyle}"
+                                        Width="32" Height="32"
+                                        IsEnabled="{x:Bind NotBusy, Mode=OneWay}">
+                                        <FontIcon Glyph="&#xE70E;" FontSize="13" />
+                                    </Button>
+                                    <Button
+                                        Click="RowDown_Click"
+                                        Tag="{x:Bind}"
+                                        Style="{StaticResource IconActionButtonStyle}"
+                                        Width="32" Height="32"
+                                        IsEnabled="{x:Bind NotBusy, Mode=OneWay}">
+                                        <FontIcon Glyph="&#xE70D;" FontSize="13" />
+                                    </Button>
+                                </StackPanel>
+
+                                <!--
                                     TwoWay 绑定，**不挂 Toggled**。
                                     原因：ToggleSwitch.Toggled 对程序性的 IsOn 变化也会触发 ——
                                     列表重排时 ListView 回收复用行容器，绑定把新行的值推进 IsOn 就又触发一次，
@@ -249,7 +280,7 @@
                                     （见 ModsPage.OnRowPropertyChanged），每一次都必然来自用户。
                                 -->
                                 <ToggleSwitch
-                                    Grid.Column="4"
+                                    Grid.Column="5"
                                     VerticalAlignment="Center"
                                     MinWidth="0"
                                     OffContent=""
@@ -352,18 +383,6 @@
                             <controls:WrapPanel x:Name="DependsWrap" HorizontalSpacing="6" VerticalSpacing="6" />
                         </StackPanel>
 
-                        <!-- 已启用的选项目录（默认折叠） -->
-                        <muxc:Expander x:Name="OptionsSection" Visibility="Collapsed"
-                                       HorizontalAlignment="Stretch"
-                                       HorizontalContentAlignment="Stretch">
-                            <muxc:Expander.Header>
-                                <TextBlock x:Name="OptionsSectionTitle" Text="已启用选项"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            </muxc:Expander.Header>
-                            <controls:WrapPanel x:Name="OptionsWrap" HorizontalSpacing="6" VerticalSpacing="6"
-                                                Margin="0,4,0,0" />
-                        </muxc:Expander>
-
                         <StackPanel x:Name="DisabledMergersSection" Spacing="5" Visibility="Collapsed">
                             <TextBlock x:Name="DisabledMergersSectionTitle" Text="已关闭的合并器" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <controls:WrapPanel x:Name="DisabledMergersWrap" HorizontalSpacing="6" VerticalSpacing="6" />
@@ -379,88 +398,47 @@
                                 LineHeight="20" />
                         </StackPanel>
 
-                        <!-- 涉及改动（默认折叠） -->
-                        <muxc:Expander x:Name="ChangesSection" Visibility="Collapsed"
-                                       HorizontalAlignment="Stretch"
-                                       HorizontalContentAlignment="Stretch">
-                            <muxc:Expander.Header>
-                                <TextBlock x:Name="ChangesSectionTitle" Text="涉及改动"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            </muxc:Expander.Header>
-                            <controls:WrapPanel x:Name="DetailChanges" HorizontalSpacing="6" VerticalSpacing="6"
-                                                Margin="0,4,0,0" />
-                        </muxc:Expander>
-
-                        <!-- 改动明细：按合并器分组的文件清单，逐组折叠（外层也默认折叠）。
-                             数据来自 sys.modDetails，与上面的元数据是同一次请求，
-                             所以折叠起来并不会省掉一次后端调用，纯粹是不占版面。
-                             摘要留在 Header 上，折叠状态下也能一眼看到"改了多少"。 -->
-                        <muxc:Expander x:Name="EditsSection" Visibility="Collapsed"
-                                       HorizontalAlignment="Stretch"
-                                       HorizontalContentAlignment="Stretch">
-                            <muxc:Expander.Header>
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        x:Name="EditsSectionTitle"
-                                        Grid.Column="0"
-                                        Text="改动明细"
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock
-                                        x:Name="EditsSummary"
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        TextTrimming="CharacterEllipsis"
-                                        Style="{StaticResource CaptionSecondaryTextStyle}" />
-                                    <ProgressRing
-                                        x:Name="EditsBusy"
-                                        Grid.Column="2"
-                                        Width="16"
-                                        Height="16"
-                                        IsActive="False"
-                                        Visibility="Collapsed" />
-                                </Grid>
-                            </muxc:Expander.Header>
-                            <StackPanel x:Name="EditsList" Spacing="2" Margin="0,4,0,0" />
-                        </muxc:Expander>
-
-                        <!-- 可用操作：原版是图标按钮条，9 个按钮在 470px 详情栏里正好一行
-                             （9×40 + 8×6 = 408px）。WinUI 的 Button 默认 MinWidth=120，
-                             必须显式压成 40 才排得下；窗口继续收窄时由 WrapPanel 自动折成两行。 -->
+                        <!-- 可用操作：图标 + 文字按钮。原来只有图标、靠 ToolTip 说明，
+                             对不认识图标的人等于没提示，所以每个按钮都带文字。
+                             WinUI 的 Button 默认 MinWidth=120，这里显式压到 0 由内容决定宽度。 -->
                         <StackPanel x:Name="ActionsSection" Spacing="6" Visibility="Collapsed">
                             <TextBlock x:Name="ActionsSectionTitle" Text="可用操作" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <controls:WrapPanel x:Name="ActionsWrap" HorizontalSpacing="6" VerticalSpacing="6">
-                                <Button x:Name="ExploreButton" Click="Explore_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                                <Button x:Name="ExploreButton" Click="Explore_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                                        <TextBlock x:Name="ExploreButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
-                                <Button x:Name="UrlButton" Click="Url_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE71B;" FontSize="14" />
+                                <Button x:Name="UrlButton" Click="Url_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE71B;" FontSize="14" />
+                                        <TextBlock x:Name="UrlButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
-                                <Button x:Name="ToggleEnabledButton" Click="ToggleEnabled_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon x:Name="ToggleEnabledIcon" Glyph="&#xE8FB;" FontSize="14" />
+                                <Button x:Name="UpdateButton" Click="Update_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                        <TextBlock x:Name="UpdateButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
-                                <Button x:Name="UpdateButton" Click="Update_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                <Button x:Name="ReprocessButton" Click="Reprocess_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                        <TextBlock x:Name="ReprocessButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
-                                <Button x:Name="UpButton" Click="Up_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE70E;" FontSize="14" />
+                                <Button x:Name="OptionsButton" Click="Options_Click" Visibility="Collapsed" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE9D5;" FontSize="14" />
+                                        <TextBlock x:Name="OptionsButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
-                                <Button x:Name="DownButton" Click="Down_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE70D;" FontSize="14" />
-                                </Button>
-                                <Button x:Name="ReprocessButton" Click="Reprocess_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
-                                </Button>
-                                <Button x:Name="OptionsButton" Click="Options_Click" Visibility="Collapsed" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE9D5;" FontSize="14" />
-                                </Button>
-                                <Button x:Name="UninstallButton" Click="Uninstall_Click" Style="{StaticResource IconActionButtonStyle}">
-                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                <Button x:Name="UninstallButton" Click="Uninstall_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                        <TextBlock x:Name="UninstallButtonText" VerticalAlignment="Center" />
+                                    </StackPanel>
                                 </Button>
                             </controls:WrapPanel>
                         </StackPanel>
