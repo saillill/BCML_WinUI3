@@ -330,7 +330,23 @@
                       · 右 20 —— 大于滚动条宽度（约 12px）+ 一点呼吸空间。
                 -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="12" Margin="14,14,20,14">
+                    <Grid Margin="14,14,20,14">
+                        <!--
+                            详情栏纵向分两块：上面是可滚动的内容，下面是固定不动的操作按钮。
+
+                            为什么要拆成两行 Grid 而不是原来的单个 StackPanel：
+                            原来按钮跟内容同在一个 StackPanel 里，内容短就浮在中间、
+                            内容长就被顶到最底下要滚很久才够得着。用户要求「按钮置底」，
+                            所以让内容行 `*` 吃掉所有富余高度，按钮行 Auto 紧贴底部；
+                            内容超出时只有上半部分滚动，按钮始终停在栏底。
+                        -->
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="12">
 
                         <Border
                             x:Name="DetailCoverBox"
@@ -415,15 +431,23 @@
                             <controls:WrapPanel x:Name="DisabledMergersWrap" HorizontalSpacing="6" VerticalSpacing="6" />
                         </StackPanel>
 
-                        <!-- 内容描述：该模组没有描述时整段隐藏 -->
-                        <StackPanel x:Name="DescSection" Spacing="4" Visibility="Collapsed">
-                            <TextBlock x:Name="DescSectionTitle" Text="内容描述" Style="{StaticResource SectionHeaderTextStyle}" />
-                            <RichTextBlock
-                                x:Name="DetailDesc"
-                                TextWrapping="Wrap"
-                                IsTextSelectionEnabled="True"
-                                LineHeight="20" />
-                        </StackPanel>
+                        <!-- 内容描述：该模组没有描述时整段隐藏。
+                             正文紧跟在封面/标题之后，本身就是「这个模组是做什么的」，
+                             再加一行「内容描述」标题只是重复，已去掉。 -->
+                        <RichTextBlock
+                            x:Name="DetailDesc"
+                            TextWrapping="Wrap"
+                            IsTextSelectionEnabled="True"
+                            LineHeight="20"
+                            Visibility="Collapsed" />
+
+                        <muxc:InfoBar
+                            x:Name="DetailNotice"
+                            IsOpen="False"
+                            IsClosable="True"
+                            Severity="Informational" />
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <!--
                             可用操作：图标 + 文字按钮，排成一个 3 列 × 2 行栅格。
@@ -438,7 +462,7 @@
                             这排本来是排在最前的三个按钮，占两列就必然折成「浏览+来源」/
                             「更新+重新处理」这样错位的组合，语义上也被切断了。
 
-                            行序（按使用频率，把只读/查看类和会改磁盘的分开）：
+                            行序（只读/查看类和会改磁盘的分开）：
                               第 1 行：浏览 · 来源 · 更新
                               第 2 行：重新处理 · 重选选项 · 卸载
                             第 2 行三个都会**改动磁盘上的模组本体**（重新处理重跑安装、
@@ -446,12 +470,14 @@
                             所以放一起，卸载再单独用红色区分。
                             加载中 / 无选中时由代码整段隐藏。
 
+                            「可用操作」这行标题已去掉：按钮本身都带文字，含义自明，
+                            再顶一行标题只是占高度。整段靠上方留白与内容分开。
+
                             按钮统一 HorizontalAlignment=Stretch 让它们真正撑满各自列
                             （Button 默认 Left，不 Stretch 的话列宽是 * 也白搭）。
                         -->
-                        <StackPanel x:Name="ActionsSection" Spacing="6" Visibility="Collapsed">
-                            <TextBlock x:Name="ActionsSectionTitle" Text="可用操作" Style="{StaticResource SectionHeaderTextStyle}" />
-                            <Grid x:Name="ActionsGrid" ColumnSpacing="6" RowSpacing="6">
+                        <Grid x:Name="ActionsSection" Grid.Row="1" Margin="0,12,0,0"
+                              ColumnSpacing="6" RowSpacing="6" Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -525,15 +551,8 @@
                                         <TextBlock x:Name="UninstallButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                            </Grid>
-                        </StackPanel>
-
-                        <muxc:InfoBar
-                            x:Name="DetailNotice"
-                            IsOpen="False"
-                            IsClosable="True"
-                            Severity="Informational" />
-                    </StackPanel>
+                        </Grid>
+                    </Grid>
                 </ScrollViewer>
             </Border>
         </Grid>

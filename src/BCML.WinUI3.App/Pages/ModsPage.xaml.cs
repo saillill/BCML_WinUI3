@@ -206,8 +206,8 @@ public sealed partial class ModsPage : Page
         InfoSectionTitle.Text = Loc.T("mods.infoTitle");
         DependsSectionTitle.Text = Loc.T("mods.dependsTitle");
         DisabledMergersSectionTitle.Text = Loc.T("mods.disabledMergersTitle");
-        DescSectionTitle.Text = Loc.T("mods.descTitle");
-        ActionsSectionTitle.Text = Loc.T("mods.actionsTitle");
+        // 「内容描述」「可用操作」两处标题已从 XAML 去掉（描述正文紧跟在标题之后、
+        // 按钮自带文字，都无需再顶一行标题），所以这里不再赋值。
 
         // 「可用操作」的按钮都带文字，所以这里同时写 TextBlock.Text（可见文字）和
         // A11y 名 + ToolTip（悬浮与读屏）。两处都取自同一份 Loc，切换语言时一起变。
@@ -219,7 +219,7 @@ public sealed partial class ModsPage : Page
         UninstallButtonText.Text = Loc.T("mods.uninstall");
 
         LabelTextButton(ExploreButton, ExploreButtonText, Loc.T("mods.exploreHint"));
-        LabelTextButton(UrlButton, UrlButtonText, null);
+        LabelTextButton(UrlButton, UrlButtonText, null);   // 见 UpdateDetails：按有无 URL 动态换提示
         LabelTextButton(UpdateButton, UpdateButtonText, Loc.T("mods.updateHint"));
         LabelTextButton(ReprocessButton, ReprocessButtonText, null);
         LabelTextButton(OptionsButton, OptionsButtonText, Loc.T("modOptions.tip"));
@@ -479,7 +479,7 @@ public sealed partial class ModsPage : Page
         // 详情区操作条是一个 Grid（继承自 Panel，而 Panel 没有 IsEnabled ——
         // IsEnabled 定义在 Control 上），所以逐个按钮设。
         // 这里遍历子元素而不是写死一堆名字：以后往条上加按钮不用回来补代码。
-        foreach (var child in ActionsGrid.Children)
+        foreach (var child in ActionsSection.Children)
         {
             if (child is Control c) c.IsEnabled = !busy;
         }
@@ -505,7 +505,7 @@ public sealed partial class ModsPage : Page
 
         // 没有选中模组时，下面整块内容区都不出现，只留一句引导。
         NoSelectionHint.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
-        DescSection.Visibility = hasDesc ? Visibility.Visible : Visibility.Collapsed;
+        DetailDesc.Visibility = hasDesc ? Visibility.Visible : Visibility.Collapsed;
         ActionsSection.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         DetailNotice.IsOpen = false;
 
@@ -535,8 +535,15 @@ public sealed partial class ModsPage : Page
 
         // ---- 操作按钮状态（补齐原版的 更新 / 浏览 / 卸载 等）
         ExploreButton.IsEnabled = has;
-        UrlButton.IsEnabled = hasUrl;
-        UrlButton.Visibility = hasUrl ? Visibility.Visible : Visibility.Collapsed;
+
+        // 「来源」始终占位、只是没 URL 时置灰，**不再隐藏**。
+        //
+        // 原来 hasUrl 为假就 Collapsed，第 1 行会变成「浏览 + 空 + 更新」——
+        // 中间空一格；若改成重排又会把「更新」挪来挪去，按钮位置随模组跳动。
+        // 置灰既让位置固定（三个格子永远对得上），也不留空档。
+        // 提示语也据此切换：有链接时说点开链接，没链接时说明该模组未提供来源。
+        UrlButton.IsEnabled = has && hasUrl;
+        LabelTextButton(UrlButton, UrlButtonText, Loc.T(hasUrl ? "mods.sourceHint" : "mods.sourceNone"));
 
         // ---- 可用操作的可见性
         //
