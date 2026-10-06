@@ -538,19 +538,35 @@ public sealed partial class ModsPage : Page
         UrlButton.IsEnabled = hasUrl;
         UrlButton.Visibility = hasUrl ? Visibility.Visible : Visibility.Collapsed;
 
-        // 「选项」按钮只对带可选组件的 mod 显示（林可儿 / 少女动作包 这类）。
-        // 这里用不带快照的轻量查询，结果按 mod 路径缓存，避免每次点选都问一次后端。
+        // ---- 可用操作的可见性
         //
-        // 没有可选组件时把「重选选项」藏掉，并让「卸载」**横跨两列**补上它那一格 ——
-        // 网格是 3 列，「卸载」本来在 col2；若让它往前挪到 col1 再跨 2 列，
-        // 就正好盖住 col1+col2，这一行仍然填满，不会右边空一格。
+        // 第 2 行有 3 个格子：重新处理 / 重选选项 / 卸载。其中「重新处理」只在已处理过的
+        // 模组上有意义，「重选选项」只在带可选组件的模组上有意义 —— 两者都可能隐藏，
+        // 于是这一行会出现 1~3 个按钮。
         //
-        // 注意必须先复位 Column，否则上一次选中「有选项」的模组时留下的
-        // SetColumn(UninstallButton, 1) 会一直生效，卸载按钮会赖在中间那格。
+        // 关键：必须把**三个按钮的列号一起重排**，不能只挪卸载。早先的写法反过来试过两次：
+        // 一次只按「重选选项」摆卸载，于是「重新处理」隐藏时 col0/col1 空两格；
+        // 一次只挪卸载、把「重选选项」留在 XAML 写死的 col1，于是「重新处理」隐藏时
+        // col0 又空一格 —— 也就是用户截图里看到的样子。
+        //
+        // 现在的做法：把可见的按钮从左往右**依次紧凑排列**（依次给 0、1、2...），
+        // 再让最后一个跨列补满剩余格子。这样 1 个按钮占满整行、2 个各占一半、
+        // 3 个各占一格，四种组合都不留空档。
+        var reprocessVisible = has && row!.Processed;
         var hasOptions = _hasOptionsCache.TryGetValue(row?.Model.Path ?? "", out var known) && known;
+
+        ReprocessButton.Visibility = reprocessVisible ? Visibility.Visible : Visibility.Collapsed;
         OptionsButton.Visibility = hasOptions ? Visibility.Visible : Visibility.Collapsed;
-        Grid.SetColumn(UninstallButton, hasOptions ? 2 : 1);
-        Grid.SetColumnSpan(UninstallButton, hasOptions ? 1 : 2);
+
+        // 按可见顺序依次占格：重新处理 → 重选选项 → 卸载（卸载始终可见）。
+        // 列号与跨列都显式设置，不依赖 XAML 里的初值，避免残留上一次的状态。
+        var col = 0;
+        if (reprocessVisible) ReprocessButton.SetValue(Grid.ColumnProperty, col++);
+        if (hasOptions) OptionsButton.SetValue(Grid.ColumnProperty, col++);
+
+        UninstallButton.SetValue(Grid.ColumnProperty, col);
+        UninstallButton.SetValue(Grid.ColumnSpanProperty, 3 - col);
+
         if (has && !hasOptions && !_optionsProbePending.Contains(row!.Model.Path))
         {
             _ = ShowOptionsButtonIfAvailableAsync(row.Model.Path);
@@ -558,7 +574,6 @@ public sealed partial class ModsPage : Page
 
         UpdateButton.IsEnabled = has && !row!.IsBusy;
         ReprocessButton.IsEnabled = has && row!.Processed && !row.IsBusy;
-        ReprocessButton.Visibility = has && row!.Processed ? Visibility.Visible : Visibility.Collapsed;
         UninstallButton.IsEnabled = has && !row!.IsBusy;
     }
 

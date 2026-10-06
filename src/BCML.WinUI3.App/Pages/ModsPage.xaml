@@ -490,6 +490,13 @@
                                     </StackPanel>
                                 </Button>
 
+                                <!--
+                                    第 2 行三个按钮的 Grid.Column 只是初值，运行时会由
+                                    UpdateDetails 按「重新处理 / 重选选项 是否可见」重排，
+                                    让最后一个（卸载）跨列补满剩余格子 —— 三者任意组合
+                                    都不会留空档。这里保持 0/1/2 的自然顺序，
+                                    不要在 XAML 里写「卸载跨几列」这类条件布局。
+                                -->
                                 <Button x:Name="ReprocessButton" Grid.Row="1" Grid.Column="0"
                                         Click="Reprocess_Click"
                                         HorizontalAlignment="Stretch"
