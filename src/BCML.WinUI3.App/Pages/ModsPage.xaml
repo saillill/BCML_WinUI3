@@ -428,19 +428,37 @@
                                         <TextBlock x:Name="ReprocessButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="OptionsButton" Click="Options_Click" Visibility="Collapsed" Style="{StaticResource ActionTextButtonStyle}">
+                            </controls:WrapPanel>
+
+                            <!-- 「重选选项」+「卸载」单独一排，彼此等宽填满一行。
+                                 这两个按钮都会**改动磁盘上的模组本体**（前者重写 options/，
+                                 后者直接删掉模组目录），和上面那排只读/跳转类操作性质不同，
+                                 分开一排也避免和它们挤在同一条 WrapPanel 里被折行打散。 -->
+                            <Grid x:Name="OptionsUninstallRow" ColumnSpacing="6" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="OptionsButton" Grid.Column="0"
+                                        Click="Options_Click"
+                                        HorizontalAlignment="Stretch"
+                                        Style="{StaticResource ActionTextButtonStyle}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE9D5;" FontSize="14" />
                                         <TextBlock x:Name="OptionsButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                                <Button x:Name="UninstallButton" Click="Uninstall_Click" Style="{StaticResource ActionTextButtonStyle}">
+                                <!-- 卸载是破坏性操作（删除模组目录且不可撤销），用红色以示区别 -->
+                                <Button x:Name="UninstallButton" Grid.Column="1"
+                                        Click="Uninstall_Click"
+                                        HorizontalAlignment="Stretch"
+                                        Style="{StaticResource DangerTextButtonStyle}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <FontIcon Glyph="&#xE74D;" FontSize="14" />
                                         <TextBlock x:Name="UninstallButtonText" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
-                            </controls:WrapPanel>
+                            </Grid>
                         </StackPanel>
 
                         <muxc:InfoBar

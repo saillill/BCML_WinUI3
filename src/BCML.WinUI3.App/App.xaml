@@ -51,6 +51,30 @@
             </Style>
 
             <!--
+                危险操作按钮（卸载）：与 ActionTextButtonStyle 同尺寸，但要一眼看出
+                是破坏性操作，所以在四个状态（常态 / 悬浮 / 按下 / 禁用）各套一层红色。
+
+                只覆盖 Background / Foreground / BorderBrush，**不重写控件模板** ——
+                模板里的圆角、焦点框、按压缩放动画全部沿用官方实现，浅色 / 深色 /
+                高对比度主题的其它细节也不会跑偏。
+
+                注意 Foreground 只在禁用态必须换：常态用主题红在浅色底上足够，
+                但禁用态若照搬会被官方 DefaultButtonStyle 的 TextFillColorDisabledBrush
+                覆盖成灰，灰字配红底反而更像"可点"。这里显式给它一个灰。
+            -->
+            <Style x:Key="DangerTextButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+
+            <!--
                 忙碌遮罩的底色。不用框架的 Smoke* 资源：那是给 ContentDialog 的烟雾层准备的，
                 名称与可用性在不同 WinUI 版本间不稳。这里按主题各给一个半透明色，
                 保证浅色主题下遮罩后的文字仍然是深色、深色主题下是浅色。
@@ -58,12 +82,22 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="BusyScrimBrush" Color="#99FFFFFF" />
+                    <!-- 危险按钮的悬浮 / 按下底色：在浅色主题上把主题红往白里调一点，
+                         这样红底上的深红文字仍有足够对比度（纯主题红当底会糊成一片）。 -->
+                    <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#2EC42B1C" />
+                    <SolidColorBrush x:Key="DangerButtonPressedBrush" Color="#4AC42B1C" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="BusyScrimBrush" Color="#B3000000" />
+                    <!-- 深色主题反过来：红往黑里压，避免深色界面里突然一块亮红抢眼。 -->
+                    <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#33FF99A4" />
+                    <SolidColorBrush x:Key="DangerButtonPressedBrush" Color="#55FF99A4" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="BusyScrimBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <!-- 高对比度下红色可能被系统配色冲掉，直接交给系统高亮色，保证可见。 -->
+                    <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DangerButtonPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

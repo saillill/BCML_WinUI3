@@ -215,15 +215,15 @@ public sealed partial class ModsPage : Page
         UrlButtonText.Text = Loc.T("mods.source");
         UpdateButtonText.Text = Loc.T("mods.update");
         ReprocessButtonText.Text = Loc.T("mods.reprocess");
-        OptionsButtonText.Text = Loc.T("modOptions.tip");
+        OptionsButtonText.Text = Loc.T("mods.optionsShort");
         UninstallButtonText.Text = Loc.T("mods.uninstall");
 
         LabelTextButton(ExploreButton, ExploreButtonText, Loc.T("mods.exploreHint"));
         LabelTextButton(UrlButton, UrlButtonText, null);
         LabelTextButton(UpdateButton, UpdateButtonText, Loc.T("mods.updateHint"));
         LabelTextButton(ReprocessButton, ReprocessButtonText, null);
-        LabelTextButton(OptionsButton, OptionsButtonText, null);
-        LabelTextButton(UninstallButton, UninstallButtonText, null);
+        LabelTextButton(OptionsButton, OptionsButtonText, Loc.T("modOptions.tip"));
+        LabelTextButton(UninstallButton, UninstallButtonText, Loc.T("mods.uninstallHint"));
 
         UpdateDetails();   // 徽标 / 按钮可用状态在语言切换后也要跟着刷新
     }
@@ -540,10 +540,14 @@ public sealed partial class ModsPage : Page
 
         // 「选项」按钮只对带可选组件的 mod 显示（林可儿 / 少女动作包 这类）。
         // 这里用不带快照的轻量查询，结果按 mod 路径缓存，避免每次点选都问一次后端。
-        OptionsButton.Visibility = Visibility.Collapsed;
-        if (has)
+        // 「重选选项」和「卸载」同排，所以这一排的显隐由这两个按钮共同决定：
+        // 没选中 mod 时整排消失；选中了但该 mod 没有可选组件，只剩卸载，让它独占整行。
+        var hasOptions = _hasOptionsCache.TryGetValue(row?.Model.Path ?? "", out var known) && known;
+        OptionsButton.Visibility = hasOptions ? Visibility.Visible : Visibility.Collapsed;
+        OptionsUninstallRow.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        if (has && !hasOptions && !_optionsProbePending.Contains(row!.Model.Path))
         {
-            _ = ShowOptionsButtonIfAvailableAsync(row!.Model.Path);
+            _ = ShowOptionsButtonIfAvailableAsync(row.Model.Path);
         }
 
         UpdateButton.IsEnabled = has && !row!.IsBusy;
@@ -956,10 +960,17 @@ public sealed partial class ModsPage : Page
     /// <summary>「这个 mod 有没有可选组件」的缓存（按 mod 路径）。</summary>
     private readonly Dictionary<string, bool> _hasOptionsCache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 正在探测中的 mod 路径。UpdateDetails 会被行状态变化频繁调用，没有这道闸
+    /// 就会对同一个 mod 并发发好几次 RPC。
+    /// </summary>
+    private readonly HashSet<string> _optionsProbePending = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>探测并显示「选项」按钮。查询失败就当没有选项，不要因此打断详情显示。</summary>
     private async Task ShowOptionsButtonIfAvailableAsync(string modPath)
     {
         if (_services.Bcml is null) return;
+        if (!_optionsProbePending.Add(modPath)) return;   // 已有一次在飞
 
         if (!_hasOptionsCache.TryGetValue(modPath, out var hasOptions))
         {
@@ -973,6 +984,10 @@ public sealed partial class ModsPage : Page
             {
                 AppServices.Diag($"探测模组选项失败 [{modPath}] {ex.Message}");
                 return;
+            }
+            finally
+            {
+                _optionsProbePending.Remove(modPath);
             }
         }
 
