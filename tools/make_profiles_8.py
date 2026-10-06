@@ -117,7 +117,21 @@ def _scan() -> dict:
 
 
 def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> dict:
-    """生成单个组合的清单文档。"""
+    """生成单个组合的清单文档。
+
+    ⚠ 两个模组的 selects 必须**完全由常量推导**，绝不可沿用扫描到的现值。
+
+    早期写法是 `sel = list(e["options"]["selects"])` 作默认、只在
+    `d == ANIM_DIR and anim` 时覆盖。后果：
+      · `anim=False`（无少女动作）时代码根本不进那个分支，sel 保持
+        "导入时的全量 18 项"，于是 `Paraglider_L3`（洋伞动作）留了下来 ——
+        无少女动作的包里仍然带洋伞滑翔动作。
+      · 更迷惑的是「原版伞」失效：林可儿那边确实去掉了 Umbrella Glider，
+        但少女动作包这边又把 Paraglider_L3 加了回去，两个模组各改一处，
+        最终产物看起来毫无区别。
+
+    所以这里改成：先算默认（不选任何可选选项），再按维度显式赋值。
+    """
     enabled = set(CORE)
     if anim:
         enabled.add(ANIM_DIR)
@@ -127,14 +141,19 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
     mods = []
     for d, e in sorted(installed.items(), key=lambda kv: kv[1]["priority"]):
         disabled = d not in enabled
-        sel = list(e["options"].get("selects") or [])
-        base = list(e["options"].get("selects") or [])
+
+        # 默认：不选任何选项（这两个模组之外的可选项一律留空）
+        sel: list = []
 
         if d == LINKLE_DIR:
+            # 林可儿：基础两项；「伞形伞」才加 Umbrella Glider。
             sel = list(LINKLE_BASE)
             if umbrella:
                 sel.append(UMBRELLA)
         elif d == ANIM_DIR and anim:
+            # 少女动作包：17 项基础 + 滑翔伞动作二选一。
+            # 注意这里**不再依赖 umbrella**（伞型对动作包的影响只体现在
+            # Paraglider_* 上），但这仍是「伞型」维度的一部分：
             sel = list(ANIM_BASE) + [
                 PARAGLIDER_UMBRELLA if umbrella else PARAGLIDER_VANILLA
             ]
