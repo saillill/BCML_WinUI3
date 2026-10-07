@@ -111,10 +111,19 @@ def _switch_game_version(ver: str) -> None:
     settings_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
     )
-    # 清掉 9999_BCML，强制走一遍完整重建（对齐 BCML 换版本时的行为）
+    # 清掉 9999_BCML（主模组 = 游戏本体的映射）与 merged_nx（合并输出），
+    # 强制走一遍完整重建 —— 对齐 BCML 换游戏版本时的行为。
+    #
+    # 两个都要清：`refresh_merges()` 只 rmtree 9999_BCML，而合并输出
+    # （`%LOCALAPPDATA%/bcml/merged_nx`，由 Rust 扩展写入）不会被它清。
+    # 换版本时若留着上一版的输出，就可能把上一版的启动包/资源表
+    # 混进这一版的产物里 —— 那类文件版本不对，游戏直接起不来。
     master = BCML_DATA / "mods_nx" / "9999_BCML"
     if master.is_dir():
         shutil.rmtree(master, ignore_errors=True)
+    merged = BCML_DATA / "merged_nx"
+    if merged.is_dir():
+        shutil.rmtree(merged, ignore_errors=True)
 
 
 _game_arg = None
