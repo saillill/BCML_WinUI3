@@ -51,6 +51,82 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
+GAME_VERSIONS = ["1.6.0", "1.8.2", "1.9.0"]
+
+# 三个游戏本体版本的解包目录（BCML 的 game_dir_nx / dlc_dir_nx 指向 romfs）
+BCML_DATA = Path(os.environ["LOCALAPPDATA"]) / "bcml"
+GAME_DIRS = {
+    "1.6.0": {
+        "game_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.6.0" / "1.6.0" / "01007EF00011E000" / "romfs",
+        "dlc_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.6.0" / "1.6.0" / "01007EF00011F001" / "romfs",
+    },
+    "1.8.2": {
+        "game_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.8.2" / "The Legend of Zelda Breath of the Wild 1.8.2"
+        / "APP+UPD" / "romfs",
+        "dlc_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.8.2" / "The Legend of Zelda Breath of the Wild 1.8.2"
+        / "DLC" / "romfs",
+    },
+    "1.9.0": {
+        "game_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.9.0" / "1.9.0" / "01007EF00011E000" / "romfs",
+        "dlc_dir_nx": Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "解包"
+        / "1.9.0" / "1.9.0" / "01007EF00011F001" / "romfs",
+    },
+}
+
+
+def _switch_game_version(ver: str) -> None:
+    """把 BCML 的游戏目录切到指定版本 —— **必须在 import bcml 之前调用**。
+
+    为什么必须在 import 前：BCML 的 `util.get_settings` 把 settings.json
+    读进函数属性缓存（`if not hasattr(get_settings, "settings")`），
+    一个进程内**只读一次**。所以想换版本只能换进程，
+    本脚本因此也只在启动最初改写一次配置。
+
+    BCML 自己判断「换了版本」的方式是重跑合并 —— `install.refresh_merges()`
+    会先 `rmtree` 掉 `mods_nx/9999_BCML`（那个主模组就是游戏本体的映射），
+    再用当前 `game_dir_nx` 重新生成一遍。
+    """
+    import json  # 局部导入：本函数在模块顶部被调用，避免污染全局命名空间
+
+    spec = GAME_DIRS[ver]
+    for key, path in spec.items():
+        if not path.is_dir():
+            raise SystemExit(
+                f"找不到 {ver} 的解包目录：\n    {path}\n"
+                "请确认该版本已解包，或修正 GAME_DIRS 里的路径。"
+            )
+
+    BCML_DATA.mkdir(parents=True, exist_ok=True)
+    settings_path = BCML_DATA / "settings.json"
+    original = settings_path.read_text(encoding="utf-8") if settings_path.is_file() else "{}"
+    # 备份一份，供 build_all_versions.py 收尾时还原
+    (BCML_DATA / "settings.json.bak-before-pack").write_text(original, encoding="utf-8")
+    data = json.loads(original or "{}")
+    data.update({k: str(v).replace("\\", "/") for k, v in spec.items()})
+    settings_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
+    )
+    # 清掉 9999_BCML，强制走一遍完整重建（对齐 BCML 换版本时的行为）
+    master = BCML_DATA / "mods_nx" / "9999_BCML"
+    if master.is_dir():
+        shutil.rmtree(master, ignore_errors=True)
+
+
+_game_arg = None
+if "--game" in sys.argv:
+    _game_arg = sys.argv[sys.argv.index("--game") + 1]
+    _switch_game_version(_game_arg)
+elif "--only" in sys.argv:
+    _maybe = sys.argv[sys.argv.index("--only") + 1]
+    if _maybe in GAME_DIRS:
+        _game_arg = _maybe
+        _switch_game_version(_game_arg)
+
 try:
     import bcml.util  # noqa: F401
 except ImportError:
@@ -67,8 +143,6 @@ import rpc_server  # noqa: E402
 PACK_ROOT = Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "MOD整合包"
 MERGED = Path(os.environ["LOCALAPPDATA"]) / "bcml" / "merged_nx"
 MODS = Path(os.environ["LOCALAPPDATA"]) / "bcml" / "mods_nx"
-
-GAME_VERSIONS = ["1.6.0", "1.8.2", "1.9.0"]
 
 # 出错时把完整堆栈写到这里 —— 管道日志会被 notify.log 帧穿插，堆栈容易丢
 _TRACE_LOG = Path(sys.argv[0]).resolve().parent.parent / "build_all_packs.error.txt"

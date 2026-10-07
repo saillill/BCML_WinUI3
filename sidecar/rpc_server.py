@@ -1269,6 +1269,28 @@ def _option_definition(mod: Path) -> dict:
     }
 
 
+def _defined_option_folders(mod: Path) -> set:
+    """info.json 里定义过的**全部**变体目录名（multi + single 都算）。
+
+    注意取的是每项的 `folder` 字段，不是 `name` —— `name` 是给人看的中文
+    显示名（还带 `*` 标默认），`folder` 才是 `options/<目录>` 的真实名字，
+    也是 `selects` 里用的名字。
+    """
+    out: set = set()
+    definition = _option_definition(mod)
+    for group in list(definition.get("multi") or []) + list(definition.get("single") or []):
+        if not isinstance(group, dict):
+            continue
+        inner = group.get("options")
+        if isinstance(inner, list):
+            for item in inner:
+                if isinstance(item, dict) and item.get("folder"):
+                    out.add(str(item["folder"]))
+        elif group.get("folder"):
+            out.add(str(group["folder"]))
+    return out
+
+
 def _snapshot_dir(mod: Path) -> tuple:
     """返回 (快照目录, 状态文件路径)。"""
     root = _snapshot_root() / _safe_key(mod.name)
@@ -1639,12 +1661,103 @@ def mod_options(params) -> dict:
     }
 
 
-def apply_mod_options(params) -> dict:
-    """按新的选择重建 mod/options/，并写入 options.json。
+# 源包搜索根目录：按 info.json 的 name 精确匹配，命中即用
+_SOURCE_ROOTS = [
+    Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "Mod文件",
+    Path.home() / "Downloads" / "塞尔达传说 旷野之息",
+]
+_SOURCE_INDEX: dict | None = None
 
-    只改文件布局，不触发合并 —— 调用方随后调 api.remerge 让它生效。
+
+def _index_source_archives() -> dict:
+    """扫描搜索根下的 .bnp，建立 name -> Path 索引（结果缓存，只扫一次）。"""
+    global _SOURCE_INDEX
+    if _SOURCE_INDEX is not None:
+        return _SOURCE_INDEX
+    try:
+        from bcml import install as _bcml_install  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        _SOURCE_INDEX = {}
+        return _SOURCE_INDEX
+    index: dict = {}
+    seen: set = set()
+    for root in _SOURCE_ROOTS:
+        if not root.is_dir():
+            continue
+        for bnp in sorted(root.rglob("*.bnp")):
+            try:
+                key = str(bnp.resolve())
+            except OSError:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                meta = _bcml_install.extract_mod_meta(bnp)
+            except Exception:  # noqa: BLE001 - 坏包/不支持的包直接跳过
+                continue
+            nm = meta.get("name")
+            if nm and nm not in index:
+                index[nm] = bnp
+    _SOURCE_INDEX = index
+    return index
+
+
+def _source_archive_for(mod: Path, name: str) -> "Path | None":
+    """给模组找源包：先看快照记录的 sourceArchive，再按 name 精确匹配。
+
+    快照里的 `sourceArchive` 不一定可靠 —— 实测某模组的快照记的是**非汉化**
+    那份 bnp，而实际装的是**汉化**那份（两者 info.json 的 name 不同、目录名
+    也不同）。所以记录值只当线索，仍要用 name 复核。
+    """
+    try:
+        state = _ensure_snapshot(mod) or {}
+        src = state.get("sourceArchive")
+        if src:
+            p = Path(str(src))
+            if p.is_file():
+                try:
+                    from bcml import install as _bcml_install  # noqa: PLC0415
+                    if _bcml_install.extract_mod_meta(p).get("name") == name:
+                        return p
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
+    return _index_source_archives().get(name)
+
+
+def apply_mod_options(params) -> dict:
+    """按新的选择**从源包重新安装**该模组 —— 走 BCML 自己的 `install_mod`。
+
+    ★ 为什么必须这样，而不是在已装好的目录上手工增删文件 ★
+
+    模组的选项状态（`options/` 目录、`logs/`、以及本体里被注入的文件）是
+    BCML `install_mod` **一次安装**的产物，三者必须相互一致。
+    在已装好的目录上手工「删掉不再选中的文件、补上新选中的文件」，
+    迟早会与 BCML 的预期脱节 —— 最典型的是取消勾选后旧的 SARC **条目**
+    撤不干净（按整份文件判断粒度太粗），残留的洋伞模型配着原版滑翔动作，
+    进游戏就是走路时头部乱转。
+
+    既然 BCML 自己有「解包 → 按选择注入 → 重算日志 → 整份替换」这条
+    正确路径，就老老实实走它。整份替换，理论上不存在残留。
+
+    BCML 的 `install_mod` 在本函数里做这些事：
+      ① 从源包解包到临时目录；
+      ② 把未选中的 `options/*` 删掉；
+      ③ 把选中项**硬链接**进模组根（同名 SARC 走**合并**而非覆盖）；
+      ④ 处理 / 生成 `logs/`；
+      ⑤ 按 `options` 写 `options.json`；
+      ⑥ 用临时目录**整份替换**目标模组目录。
+         传 `updated=True` 时它不会去顶其它模组的优先级，所以目录名
+         （`<4位优先级>_<安全名>`）与原来完全一致 —— 原地替换，不留重复。
+
+    调用方随后调 `api.remerge` 让它生效，本函数不触发合并。
     """
     _require_bcml()
+    from bcml import install as _bcml_install  # noqa: PLC0415 - 延迟导入
+    from bcml import util as _bcml_util  # noqa: PLC0415
+
     mod = Path((params or {}).get("mod") or "")
     if not mod.is_dir():
         raise FileNotFoundError(f"找不到模组目录：{mod}")
@@ -1652,118 +1765,129 @@ def apply_mod_options(params) -> dict:
     selects = params.get("selects") or []
     if not isinstance(selects, list):
         raise ValueError("selects 必须是字符串数组")
+    wanted = sorted({str(s) for s in selects})
 
-    state = _ensure_snapshot(mod)
-    snap_folders = set(state.get("folders") or [])
-    on_disk = set(_option_folders(mod))
+    info_path = mod / "info.json"
+    if not info_path.is_file():
+        raise FileNotFoundError(f"模组缺少 info.json：{info_path}")
+    info = json.loads(info_path.read_text(encoding="utf-8", errors="replace"))
+    name = str(info.get("name") or "")
+    priority = int(info.get("priority") or 0)
+    if not name or not priority:
+        raise ValueError("模组 info.json 缺少 name / priority，无法按 BCML 流程重装")
 
-    wanted = {str(s) for s in selects}
+    # 目录名必须与 BCML 的命名规则一致，否则重装会**新建**一个模组而不是替换
+    expected_id = _bcml_util.get_mod_id(name, priority)
+    if expected_id != mod.name:
+        raise ValueError(
+            "模组目录名与 BCML 命名规则不一致，重装会产生重复模组：\n"
+            f"  当前目录：{mod.name}\n"
+            f"  预期目录：{expected_id}\n"
+            "（请先在界面里对该模组做一次排序，再重选选项）"
+        )
 
-    # 能从快照或磁盘重建出来的那些；剩下的说明目录已被 BCML 安装时删掉，
-    # 而快照又是在删除之后才建的（= 拿不回来），必须明确报错而不是静默跳过，
-    # 否则用户以为换成了、其实 options.json 里只写了一半。
-    resolvable = snap_folders | on_disk
-    unknown = sorted(wanted - resolvable)
+    data = _read_options_json(mod)
+    options = {
+        "disable": list(data.get("disable") or []),
+        "options": dict(data.get("options") or {}),
+    }
+
+    # 没选任何选项 = 该模组此轮不需要选项文件（例如被禁用）。
+    # 此时**不要**重装：install_mod 会把 unselected 的 options/* 全删掉，
+    # 而重装本身要解一次源包（几十 MB），纯属浪费。
+    # 校验选项名：必须都在 info.json 的定义里。
+    #
+    #   新流程是「从源包重装」，所以**任何**定义过、曾被安装期删掉的变体
+    #   都能重新选上（源包里有原件）—— 不再有"必须重装才能恢复"的限制。
+    #   但也因此，拼错的选项名不会被 BCML 拒绝（install_mod 只是删掉未选目录、
+    #   链接已选目录，名字对不上就静默什么也不做），必须在这里挡住。
+    defined = _defined_option_folders(mod)
+    unknown = sorted(set(wanted) - defined) if defined else []
     if unknown:
         raise ValueError(
-            "这些选项已经不在磁盘上、也无法从快照恢复："
-            + ", ".join(unknown)
-            + "（多半是安装时被 BCML 删掉了；请重新解包原始 bnp 安装该模组后再选）"
+            "这些选项不属于该模组："
+            + "、".join(unknown)
+            + f"（该模组共 {len(defined)} 个可选变体）"
         )
 
-    # 快照的布局是 pristine/options/<变体>/……，
-    # 统一走 _snapshot_options_dir() 取，别再各处手拼路径。
-    pristine = _snapshot_options_dir(mod)
-    options_dir = mod / "options"
+    if not wanted:
+        data.setdefault("disable", [])
+        data.setdefault("options", {})
+        data["selects"] = []
+        _write_json_atomic(mod / "options.json", data)
+        _log_append(f"[modOptions] {mod.name}：本次未选择任何选项，跳过重装")
+        return {
+            "mod": str(mod),
+            "applied": [],
+            "available": sorted(defined) or sorted(_option_folders(mod)),
+        }
 
-    # 1) 先把选中的变体从快照取到一个临时暂存区 —— **先取后删**，
-    #    避免"删完才发现快照缺文件"这种把 options/ 弄成半残的局面。
-    staging = _snapshot_dir(mod)[0] / f"staging-{os.getpid()}"
-    _rmtree_robust(staging)
-    staging.mkdir(parents=True, exist_ok=True)
-
-    applied = []
-    missing_source = []
-    for folder in sorted(wanted):
-        src = pristine / folder
-        if src.is_dir():
-            _copy_tree_linked(src, staging / folder)
-            applied.append(folder)
-        else:
-            missing_source.append(folder)
-
-    if missing_source:
-        _rmtree_robust(staging)
-        raise ValueError(
-            "快照里没有这些选项的文件：" + ", ".join(missing_source)
-            + "（快照可能是在这些目录被删除之后才建立的；请重装原始 bnp）"
+    archive = _source_archive_for(mod, name)
+    if archive is None or not archive.is_file():
+        raise FileNotFoundError(
+            f"找不到「{name}」的原始安装包（.bnp），无法按 BCML 流程重选选项。\n"
+            "请把该模组的 .bnp 放到以下任一目录后重试：\n"
+            + "\n".join(f"    {r}" for r in _SOURCE_ROOTS)
         )
 
-    # 2) 暂存齐了，现在才整棵替换 options/（先删干净，旧选择不可能残留）
-    _rmtree_robust(options_dir)
-    options_dir.mkdir(parents=True, exist_ok=True)
+    _log_append(
+        f"[modOptions] {mod.name}：按 BCML 流程从源包重装"
+        f"（{archive.name}，选 {len(wanted)} 项）"
+    )
+
+    # ★ 先整棵删掉已装目录，再重装 ★
+    #
+    #   这一步抄自 BCML 自己的 `Api.update_mod`：
+    #       rmtree(mod.path)
+    #       install.install_mod(..., insert_priority=mod.priority, updated=True)
+    #
+    #   为什么必须先删：`install_mod` 末尾是
+    #       shutil.move(str(tmp_dir), str(mod_dir))
+    #   而 `shutil.move` 的目标**已存在**时，语义是「把 src 移进 dst 里面」，
+    #   不是替换。少了 rmtree，就会在模组目录里留下一个 `tmpXXXXXX/` 子目录，
+    #   旧内容原封不动 —— 表现是「重选选项完全没生效」，而且越点越多 tmp。
+    #   实测踩过：目录里堆了 tmp1b9z7016 / tmp7lr3oc83 两个残留。
     try:
-        for folder in applied:
-            _copy_tree_linked(staging / folder, options_dir / folder)
-    finally:
-        _rmtree_robust(staging)
+        shutil.rmtree(mod, onerror=_bcml_install.force_del)
+    except Exception as err:  # noqa: BLE001
+        raise RuntimeError(f"删除旧模组目录失败：{err}") from err
 
-    # 3) 把选中的选项**真正注入模组内容**，并重算合并日志。
-    #
-    #    这一步当初漏了，直接导致「重选选项不起作用」：
-    #    BCML 合并不看 options/ 目录里有什么，它看的是模组根目录下的文件 +
-    #    logs/ 里的日志。原版 install_mod 在收到 selects 时做两件事：
-    #      a) 把选中选项目录里的文件 hardlink 到模组根（同名 SARC 会做合并
-    #         而不是覆盖，见 install.py 的 FileExistsError 分支）；
-    #      b) 之后由 generate_logs 按 options 字典重算 logs/。
-    #    我们只重建了 options/ 就又调 remerge，remerge 读到的还是安装时那份
-    #    日志，于是选项等于没换。
-    #
-    #    ★ 关键修正（取消勾选必须能"撤掉"）：
-    #    光"注入选中项"是不够的。取消勾选某个选项时，它当初注入到模组根的文件
-    #    不会自己消失 —— 而重算 logs/ 会把模组根里所有文件都当成"本模组内容"
-    #    记进日志，于是取消勾选 = 完全无效。
-    #
-    #    实测案例：林可儿 info.json 里 Umbrella Glider 是 `default: true`，
-    #    导入时就被自动注入 3 条 Item_Parastole2/Player_Animation 到本体
-    #    TitleBG.pack（本体那份和选项目录逐条同哈希，nlink=1 是独立实体）。
-    #    此前 _inject_option_files 只删"仍在 options/ 里的旧变体文件"，
-    #    可取消勾选后该变体目录已在第 2 步被整棵删除，遍历时根本看不到它，
-    #    那 3 条就永久残留 → 伞永远是洋伞。
-    #
-    #    修法：删除依据改为**快照 pristine 的全量变体**，而不是当前 options/。
-    #    快照里每个变体的全部文件 = "模组里所有可能由选项带来的文件"，
-    #    减去"这次选中项提供的"，剩下的就该从模组根删掉。
-    #    这样与 install_mod 的语义一致（它也是"按选择重建"，不是"只增不减"）。
-    _prune_option_injections(mod, pristine, wanted)
-    _inject_option_files(mod, options_dir, applied, order=params.get("selects"))
+    try:
+        _bcml_install.install_mod(
+            archive,
+            options=options,
+            selects=wanted,
+            insert_priority=priority,
+            updated=True,
+            merge_now=False,
+        )
+    except Exception as err:  # noqa: BLE001
+        raise RuntimeError(
+            f"重装「{name}」失败。该模组目录已被清空，请用同一个 .bnp 重新安装：\n"
+            f"    {archive}\n"
+            f"原因：{err}"
+        ) from err
 
-    # 4) 记账：BCML 只认 `disable` / `options` 两个字段，**不读 `selects`**。
-    #    `options` 是「按合并器分组的选项字典」，不是目录列表，所以不能拿
-    #    applied 往里塞 —— 塞错了会让 merger.set_options 拿到 garbage。
-    #    保留原有内容，只补 keep 一份 selects 供我们自己回显已选项。
+    # 重装后把 selects 记回去，仅供界面回显已选项（BCML 自己从不读这个字段）
     data = _read_options_json(mod)
     data.setdefault("disable", [])
     data.setdefault("options", {})
-    data["selects"] = applied
+    data["selects"] = wanted
     _write_json_atomic(mod / "options.json", data)
 
-    # 5) 重算日志 —— 不做这步上面全白费（remerge 读的是 logs/）。
-    #    失败要明确报出来：宁可让用户看到「选项没生效」，
-    #    也好过悄悄跑完、结果还是默认选项。
-    try:
-        _regen_logs(mod, data)
-    except Exception as err:  # noqa: BLE001 - 原样抛给上层展示
-        raise RuntimeError(
-            f"选项文件已更新，但重算合并日志失败，选项不会生效：{err}"
-        ) from err
-
-    _log_append(f"[modOptions] {mod.name}：应用 {len(applied)} 个选项"
-                f"（快照共 {len(snap_folders)} 个可选，已注入并重算日志）")
+    # `available` 返回**全部可选变体**（按 info.json 定义），而不是磁盘上现有的
+    # 那几个 —— 界面要用它画「重选选项」对话框，只列已装的等于换不了。
+    # 新流程从源包重装，所以定义里的每一项都真的可选。
+    available = sorted(defined) or sorted(_option_folders(mod))
+    applied = sorted(set(wanted) & set(available))
+    _log_append(
+        f"[modOptions] {mod.name}：重装完成，已选 {len(applied)} 项"
+        f"（共 {len(available)} 个可选）"
+    )
     return {
         "mod": str(mod),
         "applied": applied,
-        "available": sorted(snap_folders | on_disk),
+        "available": available,
     }
 
 
