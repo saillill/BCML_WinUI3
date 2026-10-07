@@ -79,7 +79,9 @@ GAME_DIRS = {
 }
 
 
-def _switch_game_version(ver: str) -> None:
+def _switch_game_version(
+    ver: str, game_override: str | None = None, dlc_override: str | None = None
+) -> None:
     """把 BCML 的游戏目录切到指定版本 —— **必须在 import bcml 之前调用**。
 
     为什么必须在 import 前：BCML 的 `util.get_settings` 把 settings.json
@@ -87,18 +89,28 @@ def _switch_game_version(ver: str) -> None:
     一个进程内**只读一次**。所以想换版本只能换进程，
     本脚本因此也只在启动最初改写一次配置。
 
+    `game_override` / `dlc_override` 用于**指向任意游戏目录**（命令行
+    `--game-dir` / `--dlc-dir`）。当整合包要装到的那份游戏不是
+    `GAME_DIRS` 里记录的那几次 dump 时，就用它 —— 不同来源/区域的 dump
+    即使版本号相同，`Bootup*.pack` 与资源表也可能不同，
+    用错就会卡加载或直接报错。
+
     BCML 自己判断「换了版本」的方式是重跑合并 —— `install.refresh_merges()`
     会先 `rmtree` 掉 `mods_nx/9999_BCML`（那个主模组就是游戏本体的映射），
     再用当前 `game_dir_nx` 重新生成一遍。
     """
     import json  # 局部导入：本函数在模块顶部被调用，避免污染全局命名空间
 
-    spec = GAME_DIRS[ver]
+    spec = dict(GAME_DIRS[ver])
+    if game_override:
+        spec["game_dir_nx"] = Path(game_override)
+    if dlc_override:
+        spec["dlc_dir_nx"] = Path(dlc_override)
     for key, path in spec.items():
         if not path.is_dir():
             raise SystemExit(
-                f"找不到 {ver} 的解包目录：\n    {path}\n"
-                "请确认该版本已解包，或修正 GAME_DIRS 里的路径。"
+                f"找不到 {ver} 的解包目录（{key}）：\n    {path}\n"
+                "请确认该版本已解包，或用 --game-dir / --dlc-dir 指定。"
             )
 
     BCML_DATA.mkdir(parents=True, exist_ok=True)
@@ -126,15 +138,26 @@ def _switch_game_version(ver: str) -> None:
         shutil.rmtree(merged, ignore_errors=True)
 
 
-_game_arg = None
-if "--game" in sys.argv:
-    _game_arg = sys.argv[sys.argv.index("--game") + 1]
-    _switch_game_version(_game_arg)
-elif "--only" in sys.argv:
-    _maybe = sys.argv[sys.argv.index("--only") + 1]
+def _arg(flag: str):
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else None
+
+
+_game_arg = _arg("--game")
+_game_dir_arg = _arg("--game-dir")
+_dlc_dir_arg = _arg("--dlc-dir")
+
+if _game_arg is None and "--only" in sys.argv:
+    _maybe = _arg("--only")
     if _maybe in GAME_DIRS:
         _game_arg = _maybe
-        _switch_game_version(_game_arg)
+if _game_arg is None and (_game_dir_arg or _dlc_dir_arg):
+    # 只给了目录没给版本号：默认按 1.9.0 的槽位切，反正路径会被覆盖
+    _game_arg = "1.9.0"
+
+if _game_arg:
+    _switch_game_version(_game_arg, _game_dir_arg, _dlc_dir_arg)
+    if _game_dir_arg:
+        print(f"[game] 使用自定义游戏目录：{_game_dir_arg}")
 
 try:
     import bcml.util  # noqa: F401
