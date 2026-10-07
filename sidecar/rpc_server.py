@@ -1792,55 +1792,83 @@ def _prune_option_injections(mod: Path, pristine: Path, wanted: set) -> list:
 
     sarc_exts = {e.lower() for e in _bcml_util.SARC_EXTS}
 
-    # 1) 汇总「所有变体提供的文件」与「选中项提供的文件」
-    all_from_options: dict = {}   # rel -> 提供它的变体名集合
-    wanted_files: set = set()
+    # 1) 汇总 rel -> 提供它的变体名集合
+    #
+    #    ★ 这里必须按 **rel（文件路径）** 收集"提供者"，但判定"该不该撤"
+    #      要往下钻一层看 **条目**（对 SARC 而言）。早先版本只比较
+    #      `rel not in wanted_files` 就决定整份删/不删，是错的：
+    #      `TitleBG.pack` 只要**有任何一个**选中变体提供，就被判为"要保留"，
+    #      于是条目级清理整段成了死代码 —— 上一轮 `Paraglider_L3` 注入的
+    #      `Item_Parastole2` 会永久留在本体里。
+    #
+    #      实测症状：把动画包从 `Paraglider_L3` 换成 `Paraglider_Default` 后，
+    #      产物里出现「洋伞模型 + 原版滑翔动作」的错配 → 进游戏走路时头部乱转。
+    all_from_options: dict = {}   # rel -> set(变体名)
 
     for variant in sorted(p for p in pristine.glob("*") if p.is_dir()):
         for f in variant.rglob("*"):
             if not f.is_file():
                 continue
-            rel = f.relative_to(variant)
-            all_from_options.setdefault(rel, set()).add(variant.name)
-            if variant.name in wanted:
-                wanted_files.add(rel)
+            all_from_options.setdefault(
+                f.relative_to(variant), set()
+            ).add(variant.name)
 
-    # 2) 该撤掉的文件 = 选项提供过、但这次没选中的
-    to_prune = [rel for rel in all_from_options if rel not in wanted_files]
+    # 条目名缓存：只对 SARC 读，避免同一变体被反复解包
+    _name_cache: dict = {}
+
+    def _entry_names(variant: str, rel) -> set:
+        key = (variant, str(rel))
+        if key in _name_cache:
+            return _name_cache[key]
+        names: set = set()
+        src = pristine / variant / rel
+        if src.is_file():
+            try:
+                s = oead_sarc_read(src)
+                names = {f.name for f in s.get_files()}
+                del s
+            except Exception:  # noqa: BLE001 - 解析不了就当作没有
+                names = set()
+        _name_cache[key] = names
+        return names
 
     touched = []
-    for rel in sorted(to_prune, key=lambda p: str(p)):
+    for rel, providers in sorted(all_from_options.items(), key=lambda kv: str(kv[0])):
         target = mod / rel
         if not target.exists():
             continue
 
-        # 该文件仍被某个选中变体提供？→ 不能删（那是这次还要的内容）
-        if rel in wanted_files:
-            continue
-
+        selected = providers & wanted
+        unselected = providers - wanted
         is_sarc = rel.suffix.lower() in sarc_exts
+
         if not is_sarc:
-            try:
-                target.unlink()
-                touched.append(str(rel))
-            except OSError:
-                pass
+            # 非 SARC（整份文件只可能来自选项）：没有选中变体提供它就删掉
+            if not selected:
+                try:
+                    target.unlink()
+                    touched.append(str(rel))
+                except OSError:
+                    pass
             continue
 
-        # SARC：只摘掉被撤销的那些变体贡献的条目
-        removed_variants = all_from_options[rel] - wanted
-        entry_names = set()
-        for variant in removed_variants:
-            src = pristine / variant / rel
-            if not src.is_file():
-                continue
-            try:
-                src_sarc = oead_sarc_read(src)
-            except Exception:  # noqa: BLE001 - 解析不了就跳过该变体
-                continue
-            entry_names |= {f.name for f in src_sarc.get_files()}
-            del src_sarc
-        if not entry_names:
+        # SARC：算「该撤的条目」= 未选变体提供的 − 已选变体提供的
+        #
+        #   减去 selected 是必须的：某个条目可能同时被"选中"和"未选中"的
+        #   变体提供（例如多个变体共用同一段基础动画），那这次还要它，
+        #   不能因为它在某个未选变体里出现过就删。
+        #   同时，本体里"任何变体都不提供"的条目属于模组自身内容，
+        #   永远不会进 remove 集合，天然得到保护。
+        stale_names: set = set()
+        for v in unselected:
+            stale_names |= _entry_names(v, rel)
+        if not stale_names:
+            continue
+        keep_names: set = set()
+        for v in selected:
+            keep_names |= _entry_names(v, rel)
+        remove_names = stale_names - keep_names
+        if not remove_names:
             continue
 
         try:
@@ -1848,14 +1876,16 @@ def _prune_option_injections(mod: Path, pristine: Path, wanted: set) -> list:
         except Exception:  # noqa: BLE001
             continue
 
-        kept = {f.name: bytes(f.data) for f in target_sarc.get_files()
-                if f.name not in entry_names}
-        writer = oead.SarcWriter.from_sarc(target_sarc)
-        del target_sarc
+        body = {f.name: bytes(f.data) for f in target_sarc.get_files()}
+        kept = {n: d for n, d in body.items() if n not in remove_names}
+        hit = len(body) - len(kept)
+        if hit == 0:
+            del target_sarc
+            continue
 
         if len(kept) == 0:
             # 本体这条 SARC 全是被注入的 → 直接删掉整个文件
-            del writer
+            del target_sarc
             try:
                 target.unlink()
                 touched.append(str(rel))
@@ -1863,6 +1893,8 @@ def _prune_option_injections(mod: Path, pristine: Path, wanted: set) -> list:
                 pass
             continue
 
+        writer = oead.SarcWriter.from_sarc(target_sarc)
+        del target_sarc
         # 用"保留集"整体替换 files（from_sarc 已带好 endianness/对齐等元数据）
         writer.files = oead.SarcWriter.FileMap()
         for ename, edata in kept.items():
@@ -1874,7 +1906,7 @@ def _prune_option_injections(mod: Path, pristine: Path, wanted: set) -> list:
             pass
         target.write_bytes(writer.write()[1])
         del writer
-        touched.append(str(rel))
+        touched.append(f"{rel}（摘除 {hit} 条：{', '.join(sorted(remove_names))}）")
 
     if touched:
         _log_append(f"[modOptions] {mod.name}：已从模组本体撤销 "

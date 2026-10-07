@@ -146,14 +146,25 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
         sel: list = []
 
         if d == LINKLE_DIR:
-            # 林可儿：基础两项；「伞形伞」才加 Umbrella Glider。
+            # ★ Umbrella Glider **只在动画包禁用时**才由林可儿提供。
+            #
+            #   为什么必须互斥：林可儿的 `Umbrella Glider` 与动画包的
+            #   `Paraglider_L3` 是**两套不同的洋伞实现**，各自都提供
+            #   `Model/Item_Parastole2.sbfres` 与 `.Tex.sbfres`；
+            #   而且林可儿那份还额外提供 `Model/Player_Animation.sbfres`，
+            #   动画包则由 `EQ_PLAYNIM_EDIT` 提供同名但内容不同的那份。
+            #
+            #   同时启用 → 同名条目在合并时按模组优先级二选一 →
+            #   出现「洋伞模型 + 原版滑翔动作」这类错配 → 进游戏走路头部乱转。
+            #   实测：原版伞配置里混进了 Paraglider_L3 的 Item_Parastole2。
+            #
+            #   动画包启用时洋伞交给动画包的 `Paraglider_L3`
+            #   （名称即「林可儿 3.0 洋伞（含专属动作）」，模型/贴图/动作自成一套）。
             sel = list(LINKLE_BASE)
-            if umbrella:
+            if umbrella and not anim:
                 sel.append(UMBRELLA)
         elif d == ANIM_DIR and anim:
-            # 少女动作包：17 项基础 + 滑翔伞动作二选一。
-            # 注意这里**不再依赖 umbrella**（伞型对动作包的影响只体现在
-            # Paraglider_* 上），但这仍是「伞型」维度的一部分：
+            # 少女动作包：17 项基础 + 滑翔伞动作二选一（伞型维度在这里体现）。
             sel = list(ANIM_BASE) + [
                 PARAGLIDER_UMBRELLA if umbrella else PARAGLIDER_VANILLA
             ]
@@ -183,12 +194,40 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
         "modCount": len(mods),
         "mods": mods,
         "_label": label,
-        "_note": (
-            "原版伞：导入后还需对「林可儿 Mod 3.0」点一次「重选选项」"
-            "（取消勾选 Umbrella Glider），否则洋伞仍在。"
-            if not umbrella else ""
-        ),
+        "_note": _note_for(umbrella, anim),
     }
+
+
+def _note_for(umbrella: bool, anim: bool) -> str:
+    """给配置写一句「怎么才真正生效」的提示。
+
+    本清单的 `options.selects` 已经是最终选择，但 `apply_profile`（导入清单）
+    **只写记录、不重建 `options/`、不撤销已注入内容**，所以手工导入后仍需
+    对相关模组点一次「重选选项」。批量打包脚本 build_all_packs.py 会自动补这一步。
+
+    伞型与动画包的互斥关系（见 _build_one 注释）会让"该改哪个模组"随组合而变，
+    所以提示要按组合给出，不能一律写同一句。
+    """
+    parts = []
+    if anim:
+        # 动画包启用：洋伞/滑翔帆由动画包的 Paraglider_* 决定，
+        # 林可儿的 Umbrella Glider 必须保持关闭（已在 selects 里体现）。
+        if umbrella:
+            parts.append("洋伞由「少女动作包」的 Paraglider_L3 提供")
+        else:
+            parts.append("滑翔帆由「少女动作包」的 Paraglider_Default 提供")
+    elif umbrella:
+        # 动画包禁用：洋伞由林可儿自己提供（默认 Umbrella Glider 即为开）
+        parts.append("洋伞由「林可儿 Mod 3.0」的 Umbrella Glider 提供")
+    else:
+        parts.append("洋伞已关闭，滑翔帆为游戏原版")
+
+    parts.append(
+        "导入后如需手工生效，请对"
+        + ("「少女动作包」" if anim else "「林可儿 Mod 3.0」")
+        + "点一次「重选选项」"
+    )
+    return "；".join(parts) + "。"
 
 
 # 三个游戏本体版本的解包目录（用户提供；内容不同但 mod 集合一致）

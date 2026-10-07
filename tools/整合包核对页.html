@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>24 个整合包核对页</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1c1f23;--dim:#616a75;--line:#e3e6ea;
+ --accent:#c0392b;--ok:#1e7d4f;--chip:#eef1f4}
+@media (prefers-color-scheme:dark){:root{--bg:#17191c;--card:#1f2225;--fg:#e8eaed;
+ --dim:#9aa4af;--line:#2e3338;--accent:#e57373;--ok:#5cc08a;--chip:#272b30}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 24px 56px;background:var(--bg);color:var(--fg);
+ font:14px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px;font-weight:650;letter-spacing:-.2px}
+.sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+.sub code{background:var(--chip);padding:1px 6px;border-radius:4px;
+ font:12px/1.5 ui-monospace,Consolas,monospace;word-break:break-all}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+ gap:12px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .k{color:var(--dim);font-size:12px;letter-spacing:.3px}
+.card .v{font-size:21px;font-weight:650;margin-top:4px;letter-spacing:-.5px}
+.card .v.ok{color:var(--ok)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.filters button{background:var(--card);border:1px solid var(--line);color:var(--fg);
+ padding:6px 13px;border-radius:999px;cursor:pointer;font-size:13px;font-family:inherit}
+.filters button:hover{border-color:var(--accent)}
+.filters button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+ border-radius:10px;overflow:hidden}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:12.5px}
+th{background:var(--chip);font-weight:600;color:var(--dim);font-size:11.5px;
+ letter-spacing:.3px;white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--chip)}
+td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,Consolas,monospace}
+td.c{text-align:center}
+td.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+td.dim{color:var(--dim)}
+.ok{color:var(--ok);font-weight:700}
+.note{margin-top:22px;background:var(--card);border:1px solid var(--line);
+ border-left:3px solid var(--accent);border-radius:8px;padding:14px 18px;font-size:13px}
+.note h3{margin:0 0 8px;font-size:13px;letter-spacing:.3px}
+.note ul{margin:0;padding-left:20px;color:var(--dim)}
+.note li{margin:5px 0}
+.note b{color:var(--fg);font-weight:600}
+.note code{background:var(--chip);padding:1px 5px;border-radius:3px;
+ font:11.5px/1.4 ui-monospace,Consolas,monospace}
+.hidden{display:none}
+</style></head><body><div class="wrap">
+<h1>24 个整合包核对页</h1>
+<div class="sub">产物根目录：<code>C:\Users\z2637\Downloads\塞尔达传说 旷野之息\MOD整合包</code></div>
+
+<div class="cards">
+  <div class="card"><div class="k">组合总数</div><div class="v ok">24 / 24</div></div>
+  <div class="card"><div class="k">条目归属校验</div><div class="v ok">24 / 24</div></div>
+  <div class="card"><div class="k">伞型轴</div><div class="v ok">9 / 9</div></div>
+  <div class="card"><div class="k">动作轴</div><div class="v ok">9 / 9</div></div>
+  <div class="card"><div class="k">组内互异</div><div class="v ok">6 / 6</div></div>
+</div>
+
+<div class="filters" id="f">
+  <button data-k="" data-x="" class="on">全部</button>
+  <button data-k="v" data-x="1.6.0">1.6.0</button>
+  <button data-k="v" data-x="1.8.2">1.8.2</button>
+  <button data-k="v" data-x="1.9.0">1.9.0</button>
+  <button data-k="g" data-x="纯净包">纯净包</button>
+  <button data-k="g" data-x="增强包">增强包</button>
+  <button data-k="u" data-x="默认滑翔翼">原版伞</button>
+  <button data-k="u" data-x="伞形滑翔翼">伞形伞</button>
+</div>
+
+<table><thead><tr>
+<th>版本</th><th>包型</th><th>伞型</th><th>动作</th>
+<th style="text-align:right">文件数</th><th style="text-align:right">MB</th>
+<th style="text-align:center">Player_Animation</th>
+<th style="text-align:center">伞模型</th>
+<th style="text-align:center">伞贴图</th>
+<th style="text-align:center">滑翔动作</th>
+<th style="text-align:center">校验</th>
+</tr></thead><tbody>
+<tr data-v="1.6.0" data-g="纯净包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.6.0</td><td>纯净包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,219</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="纯净包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.6.0</td><td>纯净包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,202</td><td class="num">292.7</td><td class="c">—</td><td class="c">—</td><td class="c dim">—</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="纯净包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.6.0</td><td>纯净包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,220</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="纯净包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.6.0</td><td>纯净包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,203</td><td class="num">432.5</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="增强包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.6.0</td><td>增强包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,342</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="增强包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.6.0</td><td>增强包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.9</td><td class="c">原版</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="增强包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.6.0</td><td>增强包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,343</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.6.0" data-g="增强包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.6.0</td><td>增强包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.3</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="纯净包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.8.2</td><td>纯净包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,219</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="纯净包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.8.2</td><td>纯净包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,202</td><td class="num">292.7</td><td class="c">—</td><td class="c">—</td><td class="c dim">—</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="纯净包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.8.2</td><td>纯净包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,220</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="纯净包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.8.2</td><td>纯净包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,203</td><td class="num">432.5</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="增强包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.8.2</td><td>增强包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,342</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="增强包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.8.2</td><td>增强包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.9</td><td class="c">原版</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="增强包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.8.2</td><td>增强包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,343</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.8.2" data-g="增强包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.8.2</td><td>增强包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.3</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="纯净包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.9.0</td><td>纯净包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,219</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="纯净包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.9.0</td><td>纯净包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,202</td><td class="num">292.7</td><td class="c">—</td><td class="c">—</td><td class="c dim">—</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="纯净包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.9.0</td><td>纯净包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,220</td><td class="num">440.5</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="纯净包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.9.0</td><td>纯净包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,203</td><td class="num">432.5</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="增强包" data-u="默认滑翔翼" data-a="有少女动作"><td class="mono">1.9.0</td><td>增强包</td><td>默认滑翔翼</td><td>有少女动作</td><td class="num">1,342</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">P_Default</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="增强包" data-u="默认滑翔翼" data-a="无少女动作"><td class="mono">1.9.0</td><td>增强包</td><td>默认滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.9</td><td class="c">原版</td><td class="c">原版</td><td class="c dim">原版</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="增强包" data-u="伞形滑翔翼" data-a="有少女动作"><td class="mono">1.9.0</td><td>增强包</td><td>伞形滑翔翼</td><td>有少女动作</td><td class="num">1,343</td><td class="num">503.3</td><td class="c">动画包</td><td class="c">动画包</td><td class="c dim">动画包</td><td class="c dim">P_L3</td><td class="c ok">✓</td></tr>
+<tr data-v="1.9.0" data-g="增强包" data-u="伞形滑翔翼" data-a="无少女动作"><td class="mono">1.9.0</td><td>增强包</td><td>伞形滑翔翼</td><td>无少女动作</td><td class="num">1,326</td><td class="num">495.3</td><td class="c">林可儿</td><td class="c">林可儿</td><td class="c dim">林可儿</td><td class="c dim">—</td><td class="c ok">✓</td></tr>
+</tbody></table>
+
+<div class="note">
+<h3>关键条目归属（实测，已逐个核对 24 个产物）</h3>
+<ul>
+<li><b>「原版伞」是真原版。</b>伞模型 = <code>387d48135983</code>、
+贴图 = <code>27731b98b16a</code>，与游戏本体
+<code>解包\1.9.0\...\Pack\TitleBG.pack</code> 逐字节一致。</li>
+<li><b>「伞形伞」在两种动作下是两套不同的伞</b>（受模组结构限制，二者互斥）：
+<ul>
+<li>有少女动作 → 动画包的 <code>Paraglider_L3</code>（<code>08a81f6b2450</code>）</li>
+<li>无少女动作 → 林可儿的 <code>Umbrella Glider</code>（<code>719b43865de3</code>）</li>
+</ul></li>
+<li><b>为什么必须互斥：</b>林可儿洋伞与动画包 <code>Paraglider_L3</code>
+都提供 <code>Item_Parastole2</code> 与 <code>Player_Animation</code>，
+内容各不相同。同时启用会被合并器按优先级二选一，
+产生「洋伞模型 + 原版滑翔动作」的错配 —— 表现就是走路时头部乱转。</li>
+<li><b>纯净包 / 原版伞 / 无少女动作</b>没有 <code>TitleBG.pack</code>：
+会改该文件的模组都没参与，属正常。</li>
+</ul>
+</div>
+</div>
+<script>
+const tbody=document.querySelector('tbody');
+const btns=[...document.querySelectorAll('#f button')];
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  const k=b.dataset.k,x=b.dataset.x;
+  [...tbody.rows].forEach(tr=>{
+    tr.classList.toggle('hidden', !!x && tr.dataset[k]!==x);
+  });
+}));
+</script></body></html>
