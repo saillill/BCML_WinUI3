@@ -163,6 +163,82 @@ sys.__stdout__ = sys.stdout
 
 
 # --------------------------------------------------------------------------
+# 0.5) 修复 BCML 临时目录泄漏（import bcml 之后、任何合并之前生效）
+# --------------------------------------------------------------------------
+# 现象：每次合并 / 安装 mod 都会在 %TEMP% 里永久留下一个约 99MB 的
+#       tmpXXXXXXXX 目录，实测累积到 2000+ 个 / 98GB，把系统盘撑爆。
+#
+# 根因：BCML 用 tempfile.mkdtemp() 建临时目录，清理却写成
+#         shutil.rmtree(tmp, ignore_errors=True)      # install.py:76/466/475/800
+#         bcml.util.TempModContext.__exit__ 同款       # util.py:843
+#       BotW 解包出来的 romfs 文件普遍带只读属性，rmtree 删不掉却**不报错**，
+#       目录于是悄悄残留 —— 和本文件 _rmtree_robust() 注释记录的是同一个坑。
+#
+# 治法（两步互相兜底）：
+#   1) 把 BCML 的临时根目录重定向到独立盘（默认 F:\\BCML-Temp，可用环境变量
+#      BCML_TMPDIR 覆盖），先掐断系统盘的出血点；
+#   2) 拦截落在该根目录下的 shutil.rmtree，一律走「清只读 + 重试」，
+#      无论调用方传没传 ignore_errors 都能真正删干净。
+def _install_bcml_temp_fix() -> None:
+    import tempfile as _tempfile
+    import time as _time
+
+    root = os.environ.get("BCML_TMPDIR") or r"F:\BCML-Temp"
+    try:
+        os.makedirs(root, exist_ok=True)
+        _tempfile.tempdir = root
+        os.environ["TEMP"] = root
+        os.environ["TMP"] = root
+    except OSError:
+        # 目标盘不可用（没挂载 / 无权限）就退回系统默认，绝不因此让后端起不来
+        root = _tempfile.gettempdir()
+
+    # 必须先把原函数存下来：下面会把 shutil.rmtree 换成守卫版，
+    # 健壮清理内部只能调**原函数**，否则会自己调自己 → 无限递归。
+    _orig_rmtree = shutil.rmtree
+    root_l = os.path.normcase(os.path.abspath(root))
+
+    def _robust_rmtree(target) -> None:
+        p = Path(target)
+        if not p.exists():
+            return
+
+        def _on_error(_func, sub, _exc):
+            try:
+                os.chmod(sub, 0o666)
+            except OSError:
+                pass
+            try:
+                os.remove(sub)
+            except OSError:
+                pass
+
+        for attempt in range(4):
+            try:
+                _orig_rmtree(p, onerror=_on_error)
+            except OSError:
+                pass
+            if not p.exists():
+                return
+            _time.sleep(0.3 * (attempt + 1))
+
+    def _guarded_rmtree(path, ignore_errors=False, onerror=None, **kw):
+        try:
+            abs_p = os.path.normcase(os.path.abspath(os.fspath(path)))
+        except TypeError:
+            return _orig_rmtree(path, ignore_errors, onerror, **kw)
+        # 只接管我们自己临时根目录下的删除，不影响其它任何调用
+        if abs_p == root_l or abs_p.startswith(root_l + os.sep):
+            _robust_rmtree(path)
+            return None
+        return _orig_rmtree(path, ignore_errors, onerror, **kw)
+
+    if not getattr(shutil, "_bcml_tmp_guarded", False):
+        shutil.rmtree = _guarded_rmtree
+        shutil._bcml_tmp_guarded = True
+
+
+# --------------------------------------------------------------------------
 # 1) 导入 BCML
 # --------------------------------------------------------------------------
 _STARTUP_ERROR = None
@@ -177,6 +253,13 @@ except Exception as exc:                                # pragma: no cover
     _STARTUP_ERROR = "".join(traceback.format_exception_only(type(exc), exc)).strip()
     Api = None                                          # type: ignore
     bcml_util = None                                    # type: ignore
+
+if BCML_OK:
+    # 补丁自身出错也不能连累 BCML_OK —— 顶多退回「临时目录仍放系统盘」的旧行为
+    try:
+        _install_bcml_temp_fix()
+    except Exception:                                   # pragma: no cover
+        pass
 
 
 class NeedsUiError(RuntimeError):
