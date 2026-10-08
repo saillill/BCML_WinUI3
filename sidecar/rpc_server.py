@@ -1416,19 +1416,16 @@ def _find_source_archive(mod: Path) -> "Path | None":
     解错会把别的 mod 的文件灌进 options/，比"换不了"严重得多。
 
     找不到就返回 None —— 调用方据此走降级路径（只列磁盘现存变体），不会报错。
-    """
-    import os as _os
 
+    搜索范围与 `_source_archive_for` **共用** `_source_roots()`，避免
+    「一边扫得到、一边扫不到」的两套路径表。
+    """
     # 目录名形如 "0117_少女动作包脚步声修正版GirlyAnimationPack10.6Fixed"，
     # 去掉开头的优先级编号再比
     raw = mod.name
     keyword = raw.split("_", 1)[1] if "_" in raw else raw
 
-    roots = [
-        Path(_os.environ.get("USERPROFILE") or _os.path.expanduser("~")) / "Downloads",
-        Path(_os.environ.get("USERPROFILE") or _os.path.expanduser("~")) / "Desktop",
-        Path(_os.environ.get("LOCALAPPDATA") or "") / "BCML-WinUI3" / "sources",
-    ]
+    roots = _source_roots()
 
     best, best_score = None, 0.0
     for root in roots:
@@ -1605,8 +1602,10 @@ def _ensure_snapshot(mod: Path) -> dict:
     degraded = True
     if archive is not None:
         count = _populate_from_archive(mod, archive, pristine)
-        if count and defined_folders.issubset(
-                set(_option_folders(_snapshot_options_dir(mod)))):
+        # _option_folders(p) 内部会自己拼 `p/"options"`，这里必须传 pristine
+        # （布局是 pristine/options/<变体>）。传 _snapshot_options_dir(mod)
+        # 会变成 pristine/options/options —— 恒为空，于是解包成功也判成降级。
+        if count and defined_folders.issubset(set(_option_folders(pristine))):
             degraded = False
 
     if degraded:
@@ -1621,7 +1620,9 @@ def _ensure_snapshot(mod: Path) -> dict:
 
     state = {
         "modPath": str(mod),
-        "folders": sorted(_option_folders(pristine / "options")),
+        # 同上：传 pristine，不要传 pristine/"options"（否则恒为 []，
+        # 快照永远判「不完整」→ 每次调用都重新解包，白等几十秒）
+        "folders": sorted(_option_folders(pristine)),
         "files": count,
         "degraded": degraded,
         "sourceArchive": str(archive) if archive is not None else "",
@@ -1744,11 +1745,93 @@ def mod_options(params) -> dict:
     }
 
 
-# 源包搜索根目录：按 info.json 的 name 精确匹配，命中即用
-_SOURCE_ROOTS = [
-    Path.home() / "Downloads" / "塞尔达传说 旷野之息" / "Mod文件",
-    Path.home() / "Downloads" / "塞尔达传说 旷野之息",
-]
+def _bcml_game_dir() -> "Path | None":
+    """BCML 配置里的游戏 romfs 目录（拿不到就返回 None）。"""
+    for key in ("game_dir_nx", "game_dir"):
+        try:
+            from bcml import util as _bcml_util  # noqa: PLC0415
+            raw = _bcml_util.get_settings(key)
+        except Exception:  # noqa: BLE001
+            continue
+        if raw:
+            p = Path(str(raw))
+            if p.is_dir():
+                return p
+    return None
+
+
+def _source_roots() -> list:
+    """源包（.bnp）搜索根目录，按优先级排列。
+
+    ★ 这里曾经是硬编码的 `~/Downloads/塞尔达传说 旷野之息[...]` ★
+
+    实测故障：用户把游戏目录整体挪到别的盘（`D:\\塞尔达传说 旷野之息`）之后，
+    源包就一个都扫不到了，「重选选项」直接报「找不到原始安装包」——
+    而快照是用**另一套**更宽的路径建的，于是出现「快照建得起来、选项换不了」
+    这种自相矛盾的表现。根因是两处各写了一份路径表，且都不跟着游戏目录走。
+
+    现在的顺序（前面的先命中）：
+      1. 环境变量 `BCML_SOURCE_ROOTS`（os.pathsep 分隔，应急 / 脚本用）
+      2. 配置文件 `%LOCALAPPDATA%\\BCML-WinUI3\\source-roots.json`
+         （`{"roots": [...]}`，或直接是字符串数组）
+      3. **跟着 BCML 配置的游戏目录走**：从 romfs 逐级往上找带 `Mod文件`
+         子目录的那一级 —— 游戏搬到哪，源包就跟到哪
+      4. 旧默认位置兜底（Downloads / Desktop / 自带的 sources 目录）
+    """
+    import os as _os
+
+    roots: list = []
+
+    for part in (_os.environ.get("BCML_SOURCE_ROOTS") or "").split(_os.pathsep):
+        if part.strip():
+            roots.append(Path(part.strip()))
+
+    cfg = (Path(_os.environ.get("LOCALAPPDATA") or "")
+           / "BCML-WinUI3" / "source-roots.json")
+    if cfg.is_file():
+        try:
+            data = json.loads(cfg.read_text(encoding="utf-8"))
+            listed = data.get("roots") if isinstance(data, dict) else data
+            for r in listed or []:
+                if isinstance(r, str) and r.strip():
+                    roots.append(Path(r.strip()))
+        except Exception:  # noqa: BLE001 - 配置写坏不该让后端起不来
+            pass
+
+    game_dir = _bcml_game_dir()
+    if game_dir is not None:
+        # 从 romfs 逐级往上；只在真的带 `Mod文件` 的那一级停下 ——
+        # 不把游戏根目录整个加进来，否则 rglob 会去遍历几十 GB 的解包数据。
+        for anc in [game_dir, *list(game_dir.parents)[:5]]:
+            mod_files = anc / "Mod文件"
+            if mod_files.is_dir():
+                roots.append(mod_files)
+                break
+
+    home = Path(_os.environ.get("USERPROFILE") or _os.path.expanduser("~"))
+    roots += [
+        home / "Downloads" / "塞尔达传说 旷野之息" / "Mod文件",
+        home / "Downloads" / "塞尔达传说 旷野之息",
+        home / "Downloads",
+        home / "Desktop",
+        Path(_os.environ.get("LOCALAPPDATA") or "") / "BCML-WinUI3" / "sources",
+    ]
+
+    # 去重（保序）、丢掉不存在的目录
+    seen: set = set()
+    out: list = []
+    for r in roots:
+        try:
+            key = str(r.resolve())
+        except OSError:
+            key = str(r)
+        if key in seen or not r.is_dir():
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
 _SOURCE_INDEX: dict | None = None
 
 
@@ -1764,7 +1847,7 @@ def _index_source_archives() -> dict:
         return _SOURCE_INDEX
     index: dict = {}
     seen: set = set()
-    for root in _SOURCE_ROOTS:
+    for root in _source_roots():
         if not root.is_dir():
             continue
         for bnp in sorted(root.rglob("*.bnp")):
@@ -1784,6 +1867,40 @@ def _index_source_archives() -> dict:
                 index[nm] = bnp
     _SOURCE_INDEX = index
     return index
+
+
+def _find_source_by_name(name: str, limit: int = 12) -> "Path | None":
+    """按 info.json 的 name 精确匹配源包 —— **先粗筛、再验名**的便宜路径。
+
+    为什么不直接建全量索引：`extract_mod_meta` 每个 bnp 都要起一次子进程，
+    搜索根下几十个 bnp 加在一起就是几十秒。这里先按**文件名词元**跟目标名打分
+    排序，只对最像的前 N 个解元数据验名，通常一两次就命中。
+
+    粗筛只是加速、不是判据：一个候选都没命中时，调用方仍会退回全量索引
+    （`_index_source_archives`），所以不会因为「文件名与显示名毫不相干」而漏掉。
+    """
+    try:
+        from bcml import install as _bcml_install  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return None
+
+    scored = []
+    for root in _source_roots():
+        if not root.is_dir():
+            continue
+        for p in root.rglob("*.bnp"):
+            sc = _match_score(name, p.stem)
+            if sc > 0:
+                scored.append((sc, p))
+    scored.sort(key=lambda t: (-t[0], str(t[1])))
+
+    for _sc, p in scored[:limit]:
+        try:
+            if _bcml_install.extract_mod_meta(p).get("name") == name:
+                return p
+        except Exception:  # noqa: BLE001
+            continue
+    return None
 
 
 def _source_archive_for(mod: Path, name: str) -> "Path | None":
@@ -1807,6 +1924,11 @@ def _source_archive_for(mod: Path, name: str) -> "Path | None":
                     pass
     except Exception:  # noqa: BLE001
         pass
+
+    # 先走便宜的精确查找；没命中再退回全量索引（慢，但建好一次就缓存）
+    hit = _find_source_by_name(name)
+    if hit is not None:
+        return hit
     return _index_source_archives().get(name)
 
 
@@ -1910,7 +2032,7 @@ def apply_mod_options(params) -> dict:
         raise FileNotFoundError(
             f"找不到「{name}」的原始安装包（.bnp），无法按 BCML 流程重选选项。\n"
             "请把该模组的 .bnp 放到以下任一目录后重试：\n"
-            + "\n".join(f"    {r}" for r in _SOURCE_ROOTS)
+            + "\n".join(f"    {r}" for r in _source_roots())
         )
 
     _log_append(
