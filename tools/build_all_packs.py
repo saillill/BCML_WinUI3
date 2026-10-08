@@ -35,6 +35,7 @@
 用法：
     python tools/build_all_packs.py --dry-run        # 只列计划
     python tools/build_all_packs.py --only 1.9.0     # 只跑某版本（8 轮）
+    python tools/build_all_packs.py --pkg 纯净包     # 只跑某个包型（配合 --only 可缩到 4 轮）
     python tools/build_all_packs.py                  # 全跑 24 轮
     python tools/build_all_packs.py --no-archive     # 只合并不拷产物（测速）
 """
@@ -179,11 +180,23 @@ MODS = Path(os.environ["LOCALAPPDATA"]) / "bcml" / "mods_nx"
 # 出错时把完整堆栈写到这里 —— 管道日志会被 notify.log 帧穿插，堆栈容易丢
 _TRACE_LOG = Path(sys.argv[0]).resolve().parent.parent / "build_all_packs.error.txt"
 
-# 有选项、每轮需要用 applyModOptions 生效的模组
-OPTION_MODS = {
-    "0100_林可儿Mod3.0TheLinkleMod",
-    "0117_少女动作包脚步声修正版GirlyAnimationPack10.6Fixed",
-}
+def _has_options(mod_path: Path) -> bool:
+    """该模组是否定义了可选变体。
+
+    ★ 用**能力**判断，不用写死的清单 ★
+
+    原先是 `OPTION_MODS = {"0100_林可儿…", "0117_少女动作包…"}` —— 按目录名
+    写死。模组一被重排号（实测加进「手臂修正补丁」后 0117→0118）这个集合
+    就指错了对象：真正有选项的模组不再收到 `applyModOptions`，
+    选项会静默停留在上一次的状态。改成读 `info.json` 判断有没有
+    `options.single` / `options.multi`，重排号也不受影响。
+    """
+    try:
+        j = json.loads((mod_path / "info.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return False
+    opts = j.get("options") or {}
+    return bool((opts.get("single") or []) or (opts.get("multi") or []))
 
 
 def call(method: str, params=None):
@@ -215,12 +228,17 @@ def call(method: str, params=None):
     return result
 
 
-def iter_targets(only=None):
-    """遍历目标：(版本, 包型, 伞型, 动作, 叶目录, 配置文件)。"""
+def iter_targets(only=None, pkg_only=None):
+    """遍历目标：(版本, 包型, 伞型, 动作, 叶目录, 配置文件)。
+
+    `pkg_only` 可只跑某个包型（`纯净包` / `增强包`）—— 例如只重打纯净版。
+    """
     for ver in GAME_VERSIONS:
         if only and ver != only:
             continue
         for pkg in ("纯净包", "增强包"):
+            if pkg_only and pkg != pkg_only:
+                continue
             for umb in ("默认滑翔翼", "伞形滑翔翼"):
                 for anim in ("有少女动作", "无少女动作"):
                     dest = PACK_ROOT / ver / pkg / umb / anim
@@ -237,10 +255,10 @@ def apply_config(cfg_path: Path) -> None:
     doc = json.loads(raw)
     for m in doc["mods"]:
         d = m.get("dir")
-        if d not in OPTION_MODS:
+        if not d:
             continue
         mod_path = MODS / d
-        if not mod_path.is_dir():
+        if not mod_path.is_dir() or not _has_options(mod_path):
             continue
         selects = (m.get("options") or {}).get("selects") or []
         call("applyModOptions", {"mod": str(mod_path), "selects": list(selects)})
@@ -284,9 +302,10 @@ def main() -> int:
     only = None
     if "--only" in sys.argv:
         only = sys.argv[sys.argv.index("--only") + 1]
+    pkg_only = _arg("--pkg")     # 例如 --pkg 纯净包
 
-    targets = list(iter_targets(only))
-    print(f"目标 {len(targets)} 个\n")
+    targets = list(iter_targets(only, pkg_only))
+    print(f"目标 {len(targets)} 个" + (f"（仅 {pkg_only}）" if pkg_only else "") + "\n")
 
     if dry:
         for ver, pkg, umb, anim, dest, _cfg in targets:

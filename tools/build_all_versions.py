@@ -62,23 +62,25 @@ print(f"原 game_dir_nx = {json.loads(original or '{}').get('game_dir_nx')}\n")
 logs = BCML_DATA / "pack-logs"
 logs.mkdir(parents=True, exist_ok=True)
 
+# 可只打某个包型（透传给 build_all_packs.py）
+pkg_only = sys.argv[sys.argv.index("--pkg") + 1] if "--pkg" in sys.argv else None
+
 t_all = time.perf_counter()
 results = []
 try:
     for ver in targets:
         print("=" * 74)
-        print(f"开始打包游戏版本 {ver}（独立进程）")
+        print(f"开始打包游戏版本 {ver}（独立进程）"
+              + (f"  仅 {pkg_only}" if pkg_only else ""))
         print("=" * 74, flush=True)
         log = logs / f"build-{ver}.log"
         t0 = time.perf_counter()
+        cmd = [str(PY), str(HERE / "build_all_packs.py"), "--game", ver, "--only", ver]
+        if pkg_only:
+            cmd += ["--pkg", pkg_only]
         with log.open("w", encoding="utf-8", errors="replace") as fh:
             # 重定向到**文件**（不是管道）—— 管道不排空会死锁，文件不会
-            proc = subprocess.run(
-                [str(PY), str(HERE / "build_all_packs.py"), "--game", ver, "--only", ver],
-                stdout=fh,
-                stderr=subprocess.STDOUT,
-                cwd=str(ROOT),
-            )
+            proc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=str(ROOT))
         dt = time.perf_counter() - t0
         ok = proc.returncode == 0
         results.append((ver, ok, dt, log))

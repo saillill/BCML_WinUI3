@@ -16,10 +16,18 @@
     伞形伞 = 把滑翔帆换成洋伞          → Umbrella Glider 勾选
 
 【纯净版 / 增强版】
-    纯净版 = 只启用林可儿核心 7 个（0100–0106）+ 少女动作包（若有少女动作）
-             → 有少女动作 8 个 / 无少女动作 7 个
-    增强版 = 0107–0116 的 10 个套装/NPC 模组也启用
-             → 有少女动作 18 个 / 无少女动作 17 个
+    纯净版 = 只启用林可儿核心 8 个（林可儿本体 + 手臂修正补丁 + 其余 6 个）
+             + 少女动作包（若有少女动作）
+             → 有少女动作 9 个 / 无少女动作 8 个
+    增强版 = 其余套装/NPC 模组也启用 → 全部启用
+
+★★ 模组一律按**名字**认，不按编号 ★★
+
+    模组目录名是 `<4位优先级>_<安全名>`，而优先级会随用户拖动重排
+    （实测：加进「手臂修正补丁」后，原本 0100–0117 全体顺移一位，
+    少女动作包从 0117 变成 0118）。早先这里写死的是**带编号的目录名**，
+    重排后 `0101_林可儿中文对话修正` 已经指向别的模组 —— 会静默生成
+    错误的启用清单。所以现在统一用 `_key()` 去掉编号前缀来匹配。
 
 ━━━ 必须知道的：导入 ≠ 生效 ━━━
 
@@ -44,25 +52,37 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
 # --------------------------------------------------------------------------
 # 模组名单
 # --------------------------------------------------------------------------
+# 一律用**去掉编号前缀**的名字匹配（见模块 docstring 里说明的原因）。
+# 这些名字来自 BCML 的 `get_safe_pathname(info.json 的 name)`，重排号也不变。
 CORE = [
-    "0100_林可儿Mod3.0TheLinkleMod",
-    "0101_林可儿中文对话修正",
-    "0102_林可儿3.0防具图标Switch移植版",
-    "0103_林可儿珠宝饰品补充LinkleJewelry",
-    "0104_林可儿Switch标题画面自然版",
-    "0105_林可儿防具展示架修复Switch移植版",
-    "0106_林可儿盔甲改造修复LinkleArmourRefits",
+    "林可儿Mod3.0TheLinkleMod",
+    "非官方林可儿3.0补丁精简版手臂修正",   # 从少女动作包抽出的手臂修正补丁
+    "林可儿中文对话修正",
+    "林可儿3.0防具图标Switch移植版",
+    "林可儿珠宝饰品补充LinkleJewelry",
+    "林可儿Switch标题画面自然版",
+    "林可儿防具展示架修复Switch移植版",
+    "林可儿盔甲改造修复LinkleArmourRefits",
 ]
-ANIM_DIR = "0117_少女动作包脚步声修正版GirlyAnimationPack10.6Fixed"
-LINKLE_DIR = "0100_林可儿Mod3.0TheLinkleMod"
+ANIM_KEY = "少女动作包脚步声修正版GirlyAnimationPack10.6Fixed"
+LINKLE_KEY = "林可儿Mod3.0TheLinkleMod"
 
 MODS_ROOT = Path(os.environ["LOCALAPPDATA"]) / "bcml" / "mods_nx"
+
+
+def _key(dirname: str) -> str:
+    """去掉目录名的 `<4位优先级>_` 前缀。
+
+    这是**稳定标识**：模组被重排号后前缀会变，但后面的安全名不变。
+    """
+    return re.sub(r"^\d+_", "", dirname)
 
 # 少女动作包的 18 项推荐选择（第 15 组单独处理）
 ANIM_BASE = [
@@ -94,7 +114,7 @@ UMBRELLA = "Umbrella Glider"
 
 
 def _scan() -> dict:
-    """扫描已安装模组，按 dir 索引。"""
+    """扫描已安装模组，**按 `_key()` 索引**（编号前缀不进 key）。"""
     out = {}
     for d in sorted(MODS_ROOT.iterdir()):
         if not d.is_dir():
@@ -107,9 +127,9 @@ def _scan() -> dict:
             opts = json.loads((d / "options.json").read_text(encoding="utf-8"))
         except Exception:
             opts = {}
-        out[d.name] = {
+        out[_key(d.name)] = {
             "name": j.get("name") or d.name,
-            "dir": d.name,
+            "dir": d.name,              # 真实目录名（带编号）—— 清单里要用它
             "priority": int(j.get("priority") or 0),
             "options": opts,
         }
@@ -134,18 +154,18 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
     """
     enabled = set(CORE)
     if anim:
-        enabled.add(ANIM_DIR)
+        enabled.add(ANIM_KEY)
     if enhanced:
-        enabled |= {d for d in installed if d not in (ANIM_DIR,)}
+        enabled |= {k for k in installed if k != ANIM_KEY}
 
     mods = []
-    for d, e in sorted(installed.items(), key=lambda kv: kv[1]["priority"]):
-        disabled = d not in enabled
+    for k, e in sorted(installed.items(), key=lambda kv: kv[1]["priority"]):
+        disabled = k not in enabled
 
         # 默认：不选任何选项（这两个模组之外的可选项一律留空）
         sel: list = []
 
-        if d == LINKLE_DIR:
+        if k == LINKLE_KEY:
             # ★ Umbrella Glider **只在动画包禁用时**才由林可儿提供。
             #
             #   为什么必须互斥：林可儿的 `Umbrella Glider` 与动画包的
@@ -163,7 +183,7 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
             sel = list(LINKLE_BASE)
             if umbrella and not anim:
                 sel.append(UMBRELLA)
-        elif d == ANIM_DIR and anim:
+        elif k == ANIM_KEY and anim:
             # 少女动作包：17 项基础 + 滑翔伞动作二选一（伞型维度在这里体现）。
             sel = list(ANIM_BASE) + [
                 PARAGLIDER_UMBRELLA if umbrella else PARAGLIDER_VANILLA
@@ -172,7 +192,7 @@ def _build_one(installed: dict, umbrella: bool, anim: bool, enhanced: bool) -> d
         mods.append(
             {
                 "name": e["name"],
-                "dir": d,
+                "dir": e["dir"],        # 真实目录名（带当前编号）
                 "priority": e["priority"],
                 "disabled": disabled,
                 "options": {
@@ -263,9 +283,27 @@ def _dest_dir(root: Path, game_ver: str, enhanced: bool,
 
 def main() -> int:
     # 输出根目录：默认 MOD整合包\（沿用用户已有的目录骨架）
-    outroot = Path(sys.argv[1]) if len(sys.argv) > 1 else GAME_ROOT
+    #
+    #   ★ 只取「非选项参数」当输出目录 ★
+    #   之前直接写 `sys.argv[1]`，于是传 `--pure-only` 时它被当成目录名 ——
+    #   配置全写进了仓库根下一个叫 `--pure-only` 的文件夹里（已踩过）。
+    positionals = [a for a in sys.argv[1:] if not a.startswith("-")]
+    outroot = Path(positionals[0]) if positionals else GAME_ROOT
     dry = "--dry-run" in sys.argv
+    pure_only = "--pure-only" in sys.argv     # 只写「纯净包」的配置，别动增强包
     installed = _scan()
+
+    # 缺模组要**直接报错**，不能默默生成一份错的启用清单
+    missing = [k for k in CORE + [ANIM_KEY, LINKLE_KEY] if k not in installed]
+    if missing:
+        print("✗ 以下模组尚未安装，无法生成配置：")
+        for k in missing:
+            print(f"    {k}")
+        print("\n  当前已安装：")
+        for k, e in sorted(installed.items(), key=lambda kv: kv[1]["priority"]):
+            print(f"    [{e['priority']:>4}] {e['dir']}")
+        return 2
+    print(f"已识别模组 {len(installed)} 个（按名字匹配，与编号无关）")
 
     total = 0
     for game_ver in GAME_VERSIONS:
@@ -274,7 +312,8 @@ def main() -> int:
         print(f"─── 游戏版本 {game_ver}  (解包 {unpack_ok}) ───")
 
         made = []
-        for enhanced in (False, True):      # 纯净版 → 增强版
+        plans = [(False,)] if pure_only else [(False,), (True,)]
+        for (enhanced,) in plans:           # 纯净版 → 增强版
             for umbrella in (False, True):  # 原版伞 → 伞形伞
                 for anim in (True, False):  # 有 → 无
                     doc = _build_one(installed, umbrella, anim, enhanced)
@@ -286,8 +325,8 @@ def main() -> int:
 
         for label, doc, note, dest, umbrella, anim, enhanced in made:
             on = [m for m in doc["mods"] if not m["disabled"]]
-            anim_m = next(m for m in doc["mods"] if m["dir"] == ANIM_DIR)
-            linkle = next(m for m in doc["mods"] if m["dir"] == LINKLE_DIR)
+            anim_m = next(m for m in doc["mods"] if _key(m["dir"]) == ANIM_KEY)
+            linkle = next(m for m in doc["mods"] if _key(m["dir"]) == LINKLE_KEY)
             has_u = UMBRELLA in (linkle["options"]["selects"] or [])
             pg = [s for s in (anim_m["options"]["selects"] or [])
                   if s.startswith("Paraglider_")]
