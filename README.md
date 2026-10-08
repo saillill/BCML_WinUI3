@@ -25,6 +25,11 @@ tools/check_loc.py            # localization entry symmetry check
 
 The artifact is written to `artifacts/BCML-WinUI3-<version>-win-x64.zip`.
 
+## License
+
+GPL-3.0-or-later — see [LICENSE](LICENSE). This project is a derivative work of
+[BCML](https://github.com/NiceneNerd/BCML) and reuses its Python implementation.
+
 ---
 
 # BCML-WinUI3（简体中文）
@@ -51,3 +56,8 @@ tools/check_loc.py            # 本地化词条对称性校验
 ```
 
 产物在 `artifacts/BCML-WinUI3-<版本>-win-x64.zip`。
+
+## 许可证
+
+GPL-3.0-or-later —— 详见 [LICENSE](LICENSE)。本项目是
+[BCML](https://github.com/NiceneNerd/BCML) 的衍生作品，复用了它的 Python 实现。

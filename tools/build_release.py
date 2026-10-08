@@ -180,6 +180,17 @@ def main():
         rn, rb = dir_stats(os.path.join(PUBLISH_DIR, RUNTIME_SUBPATH))
         print(f"  其中内嵌运行时：{rn} 个文件，{rb / 1024 / 1024:.1f} MB")
 
+    # ---- 5.5) 随包附上许可证 ----
+    #   GPL 要求分发二进制时随附许可证正文；本项目复用 BCML 的 Python 实现
+    #   （上游为 GPL-3.0-or-later），因此发布包必须带 LICENSE。
+    #   内嵌运行时自带的第三方许可证（CPython 的 LICENSE.txt 及 site-packages 下
+    #   各 dist-info 的 license_files）本来就在 runtime/ 里，会一并打进包。
+    license_src = os.path.join(ROOT, "LICENSE")
+    if not os.path.exists(license_src):
+        raise SystemExit("仓库根目录缺少 LICENSE，无法满足分发要求")
+    shutil.copyfile(license_src, os.path.join(PUBLISH_DIR, "LICENSE"))
+    print(f"\n  已随包附上 LICENSE（GPL-3.0-or-later，{os.path.getsize(license_src)} 字节）")
+
     if "--no-zip" in sys.argv:
         return
 
