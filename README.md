@@ -27,8 +27,7 @@ The artifact is written to `artifacts/BCML-WinUI3-<version>-win-x64.zip`.
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE). This project is a derivative work of
-[BCML](https://github.com/NiceneNerd/BCML) and reuses its Python implementation.
+GPL-3.0-or-later — see [LICENSE](LICENSE).
 
 ---
 
@@ -59,5 +58,4 @@ tools/check_loc.py            # 本地化词条对称性校验
 
 ## 许可证
 
-GPL-3.0-or-later —— 详见 [LICENSE](LICENSE)。本项目是
-[BCML](https://github.com/NiceneNerd/BCML) 的衍生作品，复用了它的 Python 实现。
+GPL-3.0-or-later —— 详见 [LICENSE](LICENSE)。
